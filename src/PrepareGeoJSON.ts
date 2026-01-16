@@ -10,6 +10,7 @@ import clusterSkiAreas from "./clustering/ClusterSkiAreas";
 import { DataPaths, getPath } from "./io/GeoJSONFiles";
 import { readGeoJSONFeatures } from "./io/GeoJSONReader";
 import { convertGeoJSONToGeoPackage } from "./io/GeoPackageWriter";
+import { getPostGISDataStore, OutputFeature } from "./io/PostGISDataStore";
 import * as CSVFormatter from "./transforms/CSVFormatter";
 import { createElevationProcessor } from "./transforms/Elevation";
 import toFeatureCollection from "./transforms/FeatureCollection";
@@ -233,9 +234,72 @@ export default async function prepare(paths: DataPaths, config: Config) {
         );
       });
     }
+
+    // Export to PostGIS if enabled
+    if (config.output.toPostgis) {
+      await performanceMonitor.withOperation(
+        "Exporting to PostGIS",
+        async () => {
+          const dataStore = getPostGISDataStore(config.postgresCache);
+
+          // Reset output tables before writing
+          await dataStore.resetOutputTables();
+
+          // Export ski areas
+          const skiAreaFeatures: OutputFeature[] = [];
+          for await (const feature of readGeoJSONFeaturesAsync(
+            paths.output.skiAreas,
+          )) {
+            skiAreaFeatures.push(geoJSONFeatureToOutputFeature(feature));
+          }
+          await dataStore.saveOutputSkiAreas(skiAreaFeatures);
+          console.log(`Exported ${skiAreaFeatures.length} ski areas to PostGIS`);
+
+          // Export runs
+          const runFeatures: OutputFeature[] = [];
+          for await (const feature of readGeoJSONFeaturesAsync(
+            paths.output.runs,
+          )) {
+            runFeatures.push(geoJSONFeatureToOutputFeature(feature));
+          }
+          await dataStore.saveOutputRuns(runFeatures);
+          console.log(`Exported ${runFeatures.length} runs to PostGIS`);
+
+          // Export lifts
+          const liftFeatures: OutputFeature[] = [];
+          for await (const feature of readGeoJSONFeaturesAsync(
+            paths.output.lifts,
+          )) {
+            liftFeatures.push(geoJSONFeatureToOutputFeature(feature));
+          }
+          await dataStore.saveOutputLifts(liftFeatures);
+          console.log(`Exported ${liftFeatures.length} lifts to PostGIS`);
+        },
+      );
+    }
   });
 
   console.log("Done preparing");
 
   performanceMonitor.logTimeline();
+}
+
+function geoJSONFeatureToOutputFeature(feature: GeoJSON.Feature): OutputFeature {
+  const props = feature.properties || {};
+  return {
+    feature_id: props.id || String(feature.id) || `unknown-${Date.now()}`,
+    geometry: feature.geometry,
+    properties: props,
+  };
+}
+
+async function* readGeoJSONFeaturesAsync(
+  filePath: string,
+): AsyncGenerator<GeoJSON.Feature> {
+  const fs = await import("fs/promises");
+  const content = await fs.readFile(filePath, "utf-8");
+  const geoJSON = JSON.parse(content) as GeoJSON.FeatureCollection;
+  for (const feature of geoJSON.features) {
+    yield feature;
+  }
 }

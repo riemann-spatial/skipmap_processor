@@ -29,10 +29,8 @@ export class PostgreSQLClusteringDatabase implements ClusteringDatabase {
 
   constructor(postgresConfig: PostgresConfig) {
     this.postgresConfig = postgresConfig;
-    // Generate unique database name for parallel operations
-    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-    const randomString = Math.random().toString(36).substring(2, 8);
-    this.databaseName = `clustering-${timestamp}-${randomString}`;
+    // Use the persistent processing database instead of creating temporary ones
+    this.databaseName = postgresConfig.processingDatabase;
   }
 
   // Optimized batch sizes for PostgreSQL
@@ -65,33 +63,7 @@ export class PostgreSQLClusteringDatabase implements ClusteringDatabase {
   `;
 
   async initialize(): Promise<void> {
-    // First connect to postgres database to create our temporary database
-    const adminPoolConfig = getPostgresPoolConfig(
-      "postgres",
-      this.postgresConfig,
-    );
-    adminPoolConfig.connectionTimeoutMillis = 2000;
-
-    const adminPool = new Pool(adminPoolConfig);
-
-    try {
-      // Create temporary database
-      const adminClient = await adminPool.connect();
-      try {
-        await adminClient.query(`CREATE DATABASE "${this.databaseName}"`);
-        console.log(`✅ Created temporary database: ${this.databaseName}`);
-      } finally {
-        adminClient.release();
-      }
-    } catch (error) {
-      throw new Error(
-        `Failed to create temporary database ${this.databaseName}: ${error}`,
-      );
-    } finally {
-      await adminPool.end();
-    }
-
-    // Now create connection pool to our temporary database
+    // Connect to the persistent processing database
     const poolConfig = getPostgresPoolConfig(
       this.databaseName,
       this.postgresConfig,
@@ -116,11 +88,12 @@ export class PostgreSQLClusteringDatabase implements ClusteringDatabase {
       );
     }
 
-    // Enable PostGIS extension
+    // Ensure PostGIS extension is available
     await this.enablePostGIS();
 
-    // Create tables and indexes
+    // Create tables if they don't exist and truncate for fresh clustering
     await this.createTables();
+    await this.truncateObjectsTable();
     await this.createIndexes();
 
     console.log(
@@ -128,8 +101,15 @@ export class PostgreSQLClusteringDatabase implements ClusteringDatabase {
     );
   }
 
+  private async truncateObjectsTable(): Promise<void> {
+    const pool = this.ensureInitialized();
+    await pool.query("TRUNCATE TABLE objects RESTART IDENTITY");
+    console.log("✅ Truncated objects table for fresh clustering");
+  }
+
   async close(): Promise<void> {
     // Gracefully close the main connection pool
+    // Note: We no longer delete the database since it's persistent
     if (this.pool) {
       try {
         // Wait a bit for any pending operations to complete
@@ -146,58 +126,10 @@ export class PostgreSQLClusteringDatabase implements ClusteringDatabase {
 
         await this.pool.end();
         this.pool = null;
+        console.log(`✅ Closed connection pool to ${this.databaseName}`);
       } catch (error) {
         console.warn(`Warning during pool cleanup: ${error}`);
         this.pool = null;
-      }
-    }
-
-    // Wait a bit more to ensure all connections are properly closed
-    await new Promise((resolve) => setTimeout(resolve, 200));
-
-    // Delete the temporary database
-    const adminPoolConfig = getPostgresPoolConfig(
-      "postgres",
-      this.postgresConfig,
-    );
-    adminPoolConfig.connectionTimeoutMillis = 2000;
-
-    const adminPool = new Pool(adminPoolConfig);
-
-    try {
-      const adminClient = await adminPool.connect();
-      try {
-        // Terminate any existing connections to the database before dropping it
-        // Wrap in try-catch to handle connection termination errors gracefully
-        try {
-          await adminClient.query(`
-            SELECT pg_terminate_backend(pg_stat_activity.pid)
-            FROM pg_stat_activity
-            WHERE pg_stat_activity.datname = '${this.databaseName}'
-              AND pid <> pg_backend_pid()
-          `);
-        } catch (terminateError) {
-          // Connection termination errors are expected during shutdown
-          console.debug(`Connection termination completed: ${terminateError}`);
-        }
-
-        await adminClient.query(
-          `DROP DATABASE IF EXISTS "${this.databaseName}"`,
-        );
-        console.log(`✅ Deleted temporary database: ${this.databaseName}`);
-      } finally {
-        adminClient.release();
-      }
-    } catch (error) {
-      console.warn(
-        `Failed to delete temporary database ${this.databaseName}: ${error}`,
-      );
-    } finally {
-      try {
-        await adminPool.end();
-      } catch (poolError) {
-        // Ignore pool cleanup errors during shutdown
-        console.debug(`Admin pool cleanup: ${poolError}`);
       }
     }
   }

@@ -30,12 +30,18 @@ export type PostgresConfig = {
   host: string;
   port: number;
   cacheDatabase: string;
+  processingDatabase: string;
   user: string;
   password?: string;
   maxConnections: number;
   idleTimeoutMillis: number;
   connectionTimeoutMillis: number;
   tablePrefix: string;
+};
+
+export type OutputConfig = {
+  toFiles: boolean;
+  toPostgis: boolean;
 };
 
 export interface Config {
@@ -54,6 +60,8 @@ export interface Config {
   tiles: TilesConfig | null;
   // PostgreSQL cache configuration
   postgresCache: PostgresConfig;
+  // Output configuration
+  output: OutputConfig;
 }
 
 export function configFromEnvironment(): Config {
@@ -122,6 +130,10 @@ export function configFromEnvironment(): Config {
           }
         : null,
     postgresCache: getPostgresConfig(),
+    output: {
+      toFiles: process.env.OUTPUT_TO_FILES !== "0",
+      toPostgis: process.env.OUTPUT_TO_POSTGIS === "1",
+    },
   };
 }
 
@@ -130,6 +142,7 @@ function getPostgresConfig(): PostgresConfig {
     host: "localhost",
     port: 5432,
     cacheDatabase: "openskidata_cache",
+    processingDatabase: "openskidata",
     user: process.env.POSTGRES_USER || "postgres",
     password: process.env.POSTGRES_PASSWORD,
     maxConnections: 5,
@@ -145,6 +158,7 @@ export function getPostgresTestConfig(): PostgresConfig {
     host: "localhost",
     port: 5432,
     cacheDatabase: "openskidata_test",
+    processingDatabase: "openskidata_test",
     user: process.env.POSTGRES_USER || "postgres",
     password: process.env.POSTGRES_PASSWORD,
     maxConnections: 5,

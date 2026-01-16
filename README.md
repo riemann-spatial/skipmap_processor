@@ -12,8 +12,23 @@ This is a data pipeline that consumes OpenStreetMap & Skimap.org data and produc
 # Build the processor
 docker build -t openskidata-processor .
 
+docker rm -f openskidata-processor 2>/dev/null || true
+
 # Run the processor (container stays running for external commands)
-docker run -d --name openskidata-processor -v $(pwd)/data:/app/data openskidata-processor
+# - PostgreSQL runs inside the container and listens on 5432
+# - Publish it on host port 5433 so you can connect from the host
+# - Set POSTGRES_USER/POSTGRES_PASSWORD to avoid "trust auth" when exposing the port
+docker run -d --name openskidata-processor \
+  -p 5433:5432 \
+  -e POSTGRES_USER=dev \
+  -e POSTGRES_PASSWORD=dev \
+  # Optional: limit downloads to a bounding box: [minLon, minLat, maxLon, maxLat]
+  # Use quotes so JSON parses correctly inside the container.
+  -e BBOX='[10.74827, 46.81017, 11.08733, 47.00510]' \
+  -v $(pwd)/data:/app/data \
+  openskidata-processor
+
+docker run -d --name openskidata-processor -p 5433:5432 -e POSTGRES_USER=dev -e POSTGRES_PASSWORD=dev -e BBOX='[10.74827, 46.81017, 11.08733, 47.00510]' -v $(pwd)/data:/app/data  openskidata-processor
 
 # Execute the processing pipeline
 docker exec openskidata-processor ./run.sh
@@ -22,6 +37,49 @@ docker exec openskidata-processor ./run.sh
 docker exec openskidata-processor npm run download
 docker exec openskidata-processor npm run prepare-geojson
 ```
+
+**Rootless Docker note (Linux):** if you see `EACCES: permission denied` when writing files under `data/`,
+run commands as the `node` user (UID 1000 in the image, commonly matching your host user) or adjust the
+permissions of your local `./data` directory.
+
+```bash
+# Run pipeline as the node user (recommended for rootless Docker)
+docker exec --user node openskidata-processor ./run.sh
+```
+
+If the container is already running and you just want to try a one-off bbox without recreating it:
+
+```bash
+docker exec -e BBOX='[10.74827, 46.81017, 11.08733, 47.00510]' openskidata-processor ./run.sh
+```
+
+If you keep getting Overpass `504` errors (public instances can be overloaded), you can provide a list of
+alternative Overpass endpoints (comma-separated) and the downloader will try them in order:
+
+```bash
+docker run -d --name openskidata-processor \
+  -p 5433:5432 \
+  -e POSTGRES_USER=dev \
+  -e POSTGRES_PASSWORD=dev \
+  -e BBOX='[10.74827, 46.81017, 11.08733, 47.00510]' \
+  -e OVERPASS_ENDPOINTS='https://overpass.kumi.systems/api/interpreter,https://z.overpass-api.de/api/interpreter,https://lz4.overpass-api.de/api/interpreter' \
+  -v $(pwd)/data:/app/data \
+  openskidata-processor
+```
+
+**Query PostgreSQL from outside the container:**
+
+```bash
+# From the host (requires a local psql client: `sudo apt install postgresql-client`)
+psql -h localhost -p 5433 -U dev openskidata_cache
+```
+
+**What is stored in PostgreSQL?**
+
+- The processor's primary outputs are written to files under `./data/` (GeoJSON, CSV, GeoPackage, mbtiles).
+- PostgreSQL is used for **caching** (optional features like geocoding/elevation/snow-cover caches) and for an **internal temporary clustering database**.
+  During a run you'll see logs like `✅ Created temporary database: clustering-...` and `✅ Deleted temporary database: clustering-...` — that database is expected to be dropped at the end of the run.
+  Cache tables are created on-demand; if you haven't enabled any cache-backed features, the databases may appear "empty" aside from PostGIS metadata tables.
 
 **Development:**
 

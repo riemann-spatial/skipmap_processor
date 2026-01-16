@@ -37,9 +37,38 @@ Use a larger BBOX to test performance implications of a change:
 - Don't use `any` type. Be explicit with types.
 - Interfaces with explicit typing for all data structures
 - PascalCase for classes/interfaces, camelCase for functions/variables
+- Use clear, descriptive variable names
+- Keep files under 200-300 lines; refactor when approaching this limit
 - Test files named with patterns: `.unit.test.ts` or `.int.test.ts`
 - Stream-based data processing with functional programming patterns
 - Async/await for Promise-based operations
-- Comprehensive test coverage for both unit and integration
 - Uses Prettier for code formatting
-- Heavy use of type annotations and generics for null-safety
+
+## Development Principles
+
+### Scope and Changes
+
+- Focus only on areas relevant to the task
+- Do not modify unrelated code
+- Ask for clarification if requirements are unclear
+- Avoid changing proven patterns and architecture unless explicitly instructed
+- Consider what other methods or areas might be affected by changes
+- Remove unneeded code once it has been replaced by a different implementation
+
+### Problem Solving
+
+- Always prefer simple solutions
+- Exhaust all options with existing implementation before introducing new patterns or technologies
+- When introducing new patterns, remove old implementations to avoid duplicate logic
+- Check for existing similar functionality before writing new code
+
+### Testing
+
+- Write thorough tests for all major functionality
+- Account for different environments: dev, test, and prod
+- Mock data only in tests, never in dev or prod
+- Never add stubbing or fake data patterns that affect dev or prod environments
+
+### Configuration
+
+- Never overwrite .env files without first asking and confirming

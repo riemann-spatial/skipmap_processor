@@ -52,18 +52,22 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     python3 \
     && mkdir -p data
 
-# Copy PostgreSQL initialization script (done early as it rarely changes)
+# Copy scripts (done early as they rarely change)
 COPY scripts/init-postgres.sh /usr/local/bin/init-postgres.sh
-RUN chmod +x /usr/local/bin/init-postgres.sh
+COPY scripts/startup.sh /usr/local/bin/startup.sh
+RUN chmod +x /usr/local/bin/init-postgres.sh /usr/local/bin/startup.sh
 
-# Install dependencies on startup and run both TypeScript watch mode and PostgreSQL
-CMD ["sh", "-c", "npm install && npm run dev:all"]
+# Start PostgreSQL and run processing pipeline
+CMD ["/usr/local/bin/startup.sh"]
 
 # Production stage
 FROM base AS production
 
 # Set production environment
 ENV NODE_ENV=production
+
+# PostgreSQL (inside the container) listens on 5432
+EXPOSE 5432
 
 # Create data directory and copy scripts first (rarely change)
 RUN mkdir -p data
