@@ -1,7 +1,7 @@
 import { assert } from "console";
 import * as path from "path";
 
-export type GeocodingServerType = 'photon' | 'geocode-api';
+export type GeocodingServerType = "photon" | "geocode-api";
 
 export type GeocodingServerConfig = {
   url: string;
@@ -16,12 +16,16 @@ export type SnowCoverConfig = {
   fetchPolicy: SnowCoverFetchPolicy;
 };
 
-export type ElevationServerType = 'racemap' | 'tileserver-gl';
+export type ElevationServerType =
+  | "racemap"
+  | "tileserver-gl"
+  | "aws-terrain-tiles";
 
 export type ElevationServerConfig = {
   url: string;
   type: ElevationServerType;
   zoom?: number[]; // Optional zoom levels for tileserver-gl - will be tried in order
+  interpolate: boolean; // Use bilinear interpolation (true) or raw raster cell value (false)
 };
 
 export type TilesConfig = { mbTilesPath: string; tilesDir: string };
@@ -95,17 +99,24 @@ export function configFromEnvironment(): Config {
     elevationServer: elevationServerURL
       ? {
           url: elevationServerURL,
-          type: (process.env["ELEVATION_SERVER_TYPE"] as ElevationServerType) ?? 'racemap',
+          type:
+            (process.env["ELEVATION_SERVER_TYPE"] as ElevationServerType) ??
+            "racemap",
           zoom: process.env["ELEVATION_SERVER_ZOOM"]
-            ? process.env["ELEVATION_SERVER_ZOOM"].split(',').map(z => parseInt(z.trim()))
+            ? process.env["ELEVATION_SERVER_ZOOM"]
+                .split(",")
+                .map((z) => parseInt(z.trim()))
             : undefined,
+          interpolate: process.env["INTERPOLATE_HEIGHT_INFORMATION"] !== "false",
         }
       : null,
     geocodingServer:
       process.env.GEOCODING_SERVER_URL !== undefined
         ? {
             url: process.env.GEOCODING_SERVER_URL,
-            type: (process.env.GEOCODING_SERVER_TYPE as GeocodingServerType) || 'photon',
+            type:
+              (process.env.GEOCODING_SERVER_TYPE as GeocodingServerType) ||
+              "photon",
             cacheTTL:
               geocodingCacheTTL !== undefined
                 ? Number.parseInt(geocodingCacheTTL)

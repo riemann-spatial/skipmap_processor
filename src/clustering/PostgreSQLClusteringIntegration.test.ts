@@ -107,6 +107,7 @@ it("correctly associates lifts and runs with ski areas", async () => {
     snowCover: null,
     tiles: null,
     postgresCache: getPostgresTestConfig(),
+    output: { toFiles: true, toPostgis: false },
   };
 
   // Use SQLite database
@@ -211,6 +212,7 @@ it("verifies ski area associations persist through clustering and augmentation",
     snowCover: null,
     tiles: null,
     postgresCache: getPostgresTestConfig(),
+    output: { toFiles: true, toPostgis: false },
   };
 
   // Use SQLite database

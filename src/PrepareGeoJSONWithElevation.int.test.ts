@@ -31,7 +31,8 @@ beforeEach(() => {
   testConfig = {
     elevationServer: {
       url: "http://elevation.example.com",
-      type: 'racemap',
+      type: "racemap",
+      interpolate: true,
     },
     bbox: null,
     geocodingServer: null,
@@ -40,6 +41,7 @@ beforeEach(() => {
     snowCover: null,
     tiles: null,
     postgresCache: getPostgresTestConfig(),
+    output: { toFiles: true, toPostgis: false },
   };
 });
 
@@ -356,8 +358,8 @@ it("adds elevations to run polygons", async () => {
 
   await prepare(paths, testConfig);
 
-  expect(TestHelpers.fileContents(paths.output.runs).features[0].geometry).
-toMatchInlineSnapshot(`
+  expect(TestHelpers.fileContents(paths.output.runs).features[0].geometry)
+    .toMatchInlineSnapshot(`
 {
   "coordinates": [
     [

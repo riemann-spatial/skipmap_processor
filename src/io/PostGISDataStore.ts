@@ -157,9 +157,7 @@ export class PostGISDataStore {
 
         batch.forEach((site, idx) => {
           const offset = idx * 3;
-          placeholders.push(
-            `($${offset + 1}, $${offset + 2}, $${offset + 3})`,
-          );
+          placeholders.push(`($${offset + 1}, $${offset + 2}, $${offset + 3})`);
           values.push(
             site.osm_id,
             JSON.stringify(site.properties),
@@ -304,7 +302,9 @@ export class PostGISDataStore {
     }
   }
 
-  private async batchInsertOutputRuns(features: OutputFeature[]): Promise<void> {
+  private async batchInsertOutputRuns(
+    features: OutputFeature[],
+  ): Promise<void> {
     const client = await this.pool.connect();
     try {
       const batchSize = 500; // Smaller batch due to more columns
@@ -583,9 +583,7 @@ export class PostGISDataStore {
       let hasMore = true;
 
       const whereClause = source ? `WHERE source = $3` : "";
-      const params = source
-        ? [batchSize, offset, source]
-        : [batchSize, offset];
+      const params = source ? [batchSize, offset, source] : [batchSize, offset];
 
       while (hasMore) {
         const result = await client.query(

@@ -24,6 +24,13 @@ services:
       - BBOX=[11.85573,47.223133,12.119387,47.42013 ]
       - OUTPUT_TO_FILES=1
       - OUTPUT_TO_POSTGIS=1
+      - ELEVATION_SERVER_URL=https://s3.amazonaws.com/elevation-tiles-prod/geotiff
+      - ELEVATION_SERVER_TYPE=aws-terrain-tiles
+      - ELEVATION_SERVER_ZOOM=15
+      # Set to true to use bilinear interpolation for elevation values, false for raw raster cell values
+      - INTERPOLATE_HEIGHT_INFORMATION=true
+      # Set to false to only start PostgreSQL without running the processing pipeline
+      - COMPILE_NEW=true
 
 volumes:
   node_modules:

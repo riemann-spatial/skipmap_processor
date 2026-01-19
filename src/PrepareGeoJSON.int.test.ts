@@ -18,6 +18,7 @@ function createTestConfig(): Config {
     snowCover: null,
     tiles: null,
     postgresCache: getPostgresTestConfig(),
+    output: { toFiles: true, toPostgis: false },
   };
 }
 

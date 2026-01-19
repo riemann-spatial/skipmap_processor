@@ -14,7 +14,9 @@ import {
   skiMapSkiAreasURL,
 } from "./DownloadURLs";
 import { InputDataPaths } from "./GeoJSONFiles";
-import convertOSMFileToGeoJSON, { convertOSMToGeoJSON } from "./OSMToGeoJSONConverter";
+import convertOSMFileToGeoJSON, {
+  convertOSMToGeoJSON,
+} from "./OSMToGeoJSONConverter";
 import {
   getPostGISDataStore,
   InputFeature,
@@ -39,9 +41,24 @@ export default async function downloadAndConvertToGeoJSON(
       await Promise.all([
         downloadAndStoreRuns(overpassEndpoints, paths, bbox, dataStore),
         (async () => {
-          await downloadAndStoreLifts(overpassEndpoints, paths, bbox, dataStore);
-          await downloadAndStoreSkiAreas(overpassEndpoints, paths, bbox, dataStore);
-          await downloadAndStoreSkiAreaSites(overpassEndpoints, paths, bbox, dataStore);
+          await downloadAndStoreLifts(
+            overpassEndpoints,
+            paths,
+            bbox,
+            dataStore,
+          );
+          await downloadAndStoreSkiAreas(
+            overpassEndpoints,
+            paths,
+            bbox,
+            dataStore,
+          );
+          await downloadAndStoreSkiAreaSites(
+            overpassEndpoints,
+            paths,
+            bbox,
+            dataStore,
+          );
         })(),
         downloadAndStoreSkiMapOrgSkiAreas(paths, bbox, dataStore),
       ]);
@@ -51,7 +68,9 @@ export default async function downloadAndConvertToGeoJSON(
     const runsCount = await dataStore.getInputRunsCount();
     const liftsCount = await dataStore.getInputLiftsCount();
     const skiAreasCount = await dataStore.getInputSkiAreasCount();
-    console.log(`Stored in PostGIS: ${runsCount} runs, ${liftsCount} lifts, ${skiAreasCount} ski areas`);
+    console.log(
+      `Stored in PostGIS: ${runsCount} runs, ${liftsCount} lifts, ${skiAreasCount} ski areas`,
+    );
 
     performanceMonitor.logTimeline();
 
@@ -69,7 +88,9 @@ async function downloadAndStoreRuns(
   const geoJSON = convertOSMToGeoJSON(osmJSON);
 
   // Store in PostGIS
-  const features = geoJSON.features.map((f: GeoJSON.Feature) => osmFeatureToInputFeature(f));
+  const features = geoJSON.features.map((f: GeoJSON.Feature) =>
+    osmFeatureToInputFeature(f),
+  );
   await dataStore.saveInputRuns(features);
 
   // Also write to file for backward compatibility
@@ -86,7 +107,9 @@ async function downloadAndStoreLifts(
   const geoJSON = convertOSMToGeoJSON(osmJSON);
 
   // Store in PostGIS
-  const features = geoJSON.features.map((f: GeoJSON.Feature) => osmFeatureToInputFeature(f));
+  const features = geoJSON.features.map((f: GeoJSON.Feature) =>
+    osmFeatureToInputFeature(f),
+  );
   await dataStore.saveInputLifts(features);
 
   // Also write to file for backward compatibility
@@ -99,7 +122,11 @@ async function downloadAndStoreSkiAreas(
   bbox: GeoJSON.BBox | null,
   dataStore: PostGISDataStore,
 ): Promise<void> {
-  const osmJSON = await downloadOSMJSON(endpoints, skiAreasDownloadConfig, bbox);
+  const osmJSON = await downloadOSMJSON(
+    endpoints,
+    skiAreasDownloadConfig,
+    bbox,
+  );
   const geoJSON = convertOSMToGeoJSON(osmJSON);
 
   // Store in PostGIS
@@ -119,7 +146,11 @@ async function downloadAndStoreSkiAreaSites(
   bbox: GeoJSON.BBox | null,
   dataStore: PostGISDataStore,
 ): Promise<void> {
-  const osmJSON = await downloadOSMJSON(endpoints, skiAreaSitesDownloadConfig, bbox);
+  const osmJSON = await downloadOSMJSON(
+    endpoints,
+    skiAreaSitesDownloadConfig,
+    bbox,
+  );
 
   // Parse ski area sites from OSM JSON (relations)
   const sites: InputSkiAreaSite[] = [];
@@ -127,7 +158,10 @@ async function downloadAndStoreSkiAreaSites(
     for (const element of osmJSON.elements) {
       if (element.type === "relation") {
         const memberIds = (element.members || [])
-          .filter((m: { type: string; ref: number }) => m.type === "way" || m.type === "node")
+          .filter(
+            (m: { type: string; ref: number }) =>
+              m.type === "way" || m.type === "node",
+          )
           .map((m: { ref: number }) => m.ref);
 
         sites.push({
@@ -153,13 +187,15 @@ async function downloadAndStoreSkiMapOrgSkiAreas(
   const geoJSON = await downloadSkiMapOrgGeoJSON(bbox);
 
   // Store in PostGIS
-  const features: InputSkiAreaFeature[] = geoJSON.features.map((f: GeoJSON.Feature) => ({
-    osm_id: typeof f.id === "number" ? f.id : parseInt(String(f.id), 10) || 0,
-    osm_type: "skimap",
-    geometry: f.geometry,
-    properties: f.properties || {},
-    source: "skimap" as const,
-  }));
+  const features: InputSkiAreaFeature[] = geoJSON.features.map(
+    (f: GeoJSON.Feature) => ({
+      osm_id: typeof f.id === "number" ? f.id : parseInt(String(f.id), 10) || 0,
+      osm_type: "skimap",
+      geometry: f.geometry,
+      properties: f.properties || {},
+      source: "skimap" as const,
+    }),
+  );
   await dataStore.saveInputSkiAreas(features);
 
   // Also write to file for backward compatibility

@@ -253,7 +253,9 @@ export default async function prepare(paths: DataPaths, config: Config) {
             skiAreaFeatures.push(geoJSONFeatureToOutputFeature(feature));
           }
           await dataStore.saveOutputSkiAreas(skiAreaFeatures);
-          console.log(`Exported ${skiAreaFeatures.length} ski areas to PostGIS`);
+          console.log(
+            `Exported ${skiAreaFeatures.length} ski areas to PostGIS`,
+          );
 
           // Export runs
           const runFeatures: OutputFeature[] = [];
@@ -284,7 +286,9 @@ export default async function prepare(paths: DataPaths, config: Config) {
   performanceMonitor.logTimeline();
 }
 
-function geoJSONFeatureToOutputFeature(feature: GeoJSON.Feature): OutputFeature {
+function geoJSONFeatureToOutputFeature(
+  feature: GeoJSON.Feature,
+): OutputFeature {
   const props = feature.properties || {};
   return {
     feature_id: props.id || String(feature.id) || `unknown-${Date.now()}`,

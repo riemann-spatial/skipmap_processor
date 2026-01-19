@@ -100,7 +100,9 @@ function createCommonColumns<
       getValue: (p) => {
         const unique = Array.from(
           new Set(
-            p.places.map((place) => place.iso3166_2).filter((r) => r) as string[],
+            p.places
+              .map((place) => place.iso3166_2)
+              .filter((r) => r) as string[],
           ),
         ).sort();
         return unique.length > 0 ? unique.join(";") : null;

@@ -147,7 +147,7 @@ CREATE INDEX ski_area_sites_osm_id_idx ON input.ski_area_sites (osm_id);
 CREATE TABLE output.runs (
   id SERIAL PRIMARY KEY,
   feature_id TEXT UNIQUE NOT NULL,
-  geometry GEOMETRY(Geometry, 4326),
+  geometry GEOMETRY(GeometryZ, 4326),
   -- Exploded properties (same names as GeoJSON)
   type TEXT,
   name TEXT,
@@ -183,7 +183,7 @@ CREATE INDEX runs_output_name_idx ON output.runs (name);
 CREATE TABLE output.lifts (
   id SERIAL PRIMARY KEY,
   feature_id TEXT UNIQUE NOT NULL,
-  geometry GEOMETRY(Geometry, 4326),
+  geometry GEOMETRY(GeometryZ, 4326),
   -- Exploded properties (same names as GeoJSON)
   type TEXT,
   name TEXT,

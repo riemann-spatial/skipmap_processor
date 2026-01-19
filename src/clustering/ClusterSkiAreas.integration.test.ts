@@ -42,6 +42,7 @@ beforeEach(async () => {
     snowCover: null,
     tiles: null,
     postgresCache: getPostgresTestConfig(),
+    output: { toFiles: true, toPostgis: false },
   };
 });
 

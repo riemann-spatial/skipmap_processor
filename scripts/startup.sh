@@ -33,17 +33,25 @@ if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
     exit 1
 fi
 
-# Install npm dependencies if needed
-if [ ! -d "node_modules" ] || [ ! -f "node_modules/.package-lock.json" ]; then
-    echo "Installing npm dependencies..."
-    npm install
+# Check if COMPILE_NEW is set to false (case-insensitive)
+COMPILE_NEW_LOWER=$(echo "${COMPILE_NEW:-true}" | tr '[:upper:]' '[:lower:]')
+
+if [ "$COMPILE_NEW_LOWER" = "false" ] || [ "$COMPILE_NEW_LOWER" = "0" ]; then
+    echo "COMPILE_NEW is false - skipping data compilation, PostgreSQL is running."
+    echo "Connect to PostgreSQL at localhost:5432 (or mapped port from host)"
+else
+    # Install npm dependencies if needed
+    if [ ! -d "node_modules" ] || [ ! -f "node_modules/.package-lock.json" ]; then
+        echo "Installing npm dependencies..."
+        npm install
+    fi
+
+    # Run the processing pipeline
+    echo "Starting OpenSkiData processing..."
+    ./run.sh
+
+    echo "Processing complete!"
 fi
-
-# Run the processing pipeline
-echo "Starting OpenSkiData processing..."
-./run.sh
-
-echo "Processing complete!"
 
 # Keep the container running by waiting for PostgreSQL
 wait $POSTGRES_PID
