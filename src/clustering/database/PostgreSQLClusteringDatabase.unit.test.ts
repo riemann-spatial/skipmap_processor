@@ -1,7 +1,5 @@
-import {
-  PostgreSQLClusteringDatabase,
-  PostgreSQLCursor,
-} from "./PostgreSQLClusteringDatabase";
+import { PostgreSQLClusteringDatabase } from "./PostgreSQLClusteringDatabase";
+import { PostgreSQLCursor } from "./Cursors";
 import { MapObjectType } from "../MapObject";
 import { SkiAreaActivity } from "openskidata-format";
 import { getPostgresTestConfig } from "../../Config";

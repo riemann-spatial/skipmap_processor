@@ -1,4 +1,5 @@
 import * as _ from "lodash";
+import { ValidationError } from "../../errors";
 import { RunLineFeature } from "../../features/RunFeature";
 import PointMultiMap from "./PointMultiMap";
 import { isPartOfSameRun, mergedProperties } from "./RunJoining";
@@ -52,7 +53,10 @@ export default class PointGraph {
         }
         if (coordsLength > 0) {
           if (!_.isEqual(featureCoords[0], coordinates[coordsLength - 1])) {
-            throw "mismatched coords in PointGraph";
+            throw new ValidationError(
+              "Mismatched coords in PointGraph",
+              "coordinates",
+            );
           }
           featureCoords = featureCoords.slice(1);
         }

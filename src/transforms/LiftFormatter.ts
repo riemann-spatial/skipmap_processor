@@ -129,8 +129,15 @@ function getStatusAndLiftType(tags: OSMLiftTags) {
   return { status, liftType };
 }
 
-function isNumeric(n: any) {
-  return !isNaN(parseFloat(n)) && isFinite(n);
+function isNumeric(n: unknown): boolean {
+  if (typeof n === "number") {
+    return !isNaN(n) && isFinite(n);
+  }
+  if (typeof n === "string") {
+    const parsed = parseFloat(n);
+    return !isNaN(parsed) && isFinite(parsed);
+  }
+  return false;
 }
 
 function mapDuration(string: string | undefined): number | null {

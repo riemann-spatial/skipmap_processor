@@ -7,6 +7,7 @@ import {
   RunFeature,
 } from "openskidata-format";
 import { ElevationServerConfig, PostgresConfig } from "../Config";
+import { GeometryError } from "../errors";
 import { PostgresCache } from "../utils/PostgresCache";
 import {
   fetchElevationsFromAWSTerrainTiles,
@@ -411,7 +412,10 @@ function getCoordinates(feature: RunFeature | LiftFeature) {
       break;
     default:
       const exhaustiveCheck: never = geometryType;
-      throw "Geometry type " + exhaustiveCheck + " not implemented";
+      throw new GeometryError(
+        `Geometry type ${exhaustiveCheck} not implemented`,
+        exhaustiveCheck,
+      );
   }
 
   // Remove elevation in case it was already added to this point
@@ -446,7 +450,10 @@ function addElevations(
       });
     default:
       const exhaustiveCheck: never = geometryType;
-      throw "Geometry type " + exhaustiveCheck + " not implemented";
+      throw new GeometryError(
+        `Geometry type ${exhaustiveCheck} not implemented`,
+        exhaustiveCheck,
+      );
   }
 }
 

@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync } from "fs";
 import { FeatureType } from "openskidata-format";
 import { join } from "path";
+import { ValidationError } from "../errors";
 
 export interface CommonGeoJSONPaths {
   readonly skiAreas: string;
@@ -112,5 +113,5 @@ export function getPath(paths: CommonGeoJSONPaths, featureType: FeatureType) {
       return paths.lifts;
   }
 
-  throw "Unhandled feature type";
+  throw new ValidationError("Unhandled feature type", "featureType");
 }

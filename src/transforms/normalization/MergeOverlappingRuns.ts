@@ -1,6 +1,7 @@
 import _ from "lodash";
 import { RunProperties } from "openskidata-format";
 import * as TopoJSON from "topojson-specification";
+import { ValidationError } from "../../errors";
 import { mergedProperties } from "./RunJoining";
 
 export type RunTopology = TopoJSON.Topology<{
@@ -38,7 +39,7 @@ export function mergeOverlappingRuns(data: RunTopology) {
   _.forEach(lines, (line) => {
     const properties = line.properties;
     if (properties === undefined) {
-      throw "Missing properties";
+      throw new ValidationError("Missing properties", "line.properties");
     }
 
     _.forEach(getArcsList(line), (arcs) => {
@@ -119,7 +120,7 @@ function forEachArc(
 
 function getDirectionData(runs: RunArc[]) {
   if (runs.length === 0) {
-    throw "Invalid input";
+    throw new ValidationError("Invalid input: runs array is empty", "runs");
   }
   type DirectionData = { isReversed: boolean; oneway: boolean | null };
   const result = runs

@@ -8,6 +8,7 @@ import {
   RunProperties,
   Status,
 } from "openskidata-format";
+import { ValidationError } from "../../errors";
 import mergedAndUniqued from "../../utils/mergedAndUniqued";
 import uniquedSources from "../UniqueSources";
 
@@ -47,7 +48,7 @@ export function mergedProperties(
   allProperties: RunProperties[],
 ): RunProperties {
   if (allProperties.length === 0) {
-    throw "No input properties";
+    throw new ValidationError("No input properties", "allProperties");
   }
 
   return {
@@ -109,10 +110,10 @@ function comparePriority<V>(
   const leftPriority = priorityTable.get(left);
   const rightPriority = priorityTable.get(right);
   if (leftPriority === undefined) {
-    throw "Missing priority for " + left;
+    throw new ValidationError(`Missing priority for ${left}`, "priorityTable");
   }
   if (rightPriority === undefined) {
-    throw "Missing priority for " + right;
+    throw new ValidationError(`Missing priority for ${right}`, "priorityTable");
   }
 
   return leftPriority > rightPriority

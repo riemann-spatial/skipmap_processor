@@ -14,7 +14,15 @@ import {
   GetSkiAreasOptions,
   SearchContext,
 } from "./ClusteringDatabase";
+import { EmptyCursor, PostgreSQLCursor } from "./Cursors";
 import { performanceMonitor } from "./PerformanceMonitor";
+import {
+  buildUpdateClauses,
+  mapObjectToSQLParams,
+  rowToMapObject,
+} from "./RowMapper";
+import { BATCH_SIZES, SQL } from "./sql";
+import { ObjectRow, PostgresError, SQLParamValue } from "./types";
 
 /**
  * PostgreSQL implementation of ClusteringDatabase using PostGIS for spatial queries.
@@ -29,41 +37,10 @@ export class PostgreSQLClusteringDatabase implements ClusteringDatabase {
 
   constructor(postgresConfig: PostgresConfig) {
     this.postgresConfig = postgresConfig;
-    // Use the persistent processing database instead of creating temporary ones
     this.databaseName = postgresConfig.processingDatabase;
   }
 
-  // Optimized batch sizes for PostgreSQL
-  private static readonly DEFAULT_BATCH_SIZE = 1000;
-  private static readonly BULK_OPERATION_BATCH_SIZE = 5000;
-
-  // SQL statements
-  private static readonly INSERT_OBJECT_SQL = `
-    INSERT INTO objects
-    (key, type, source, geometry, geometry_with_elevations, geom, is_polygon, activities, ski_areas,
-     is_basis_for_new_ski_area, is_in_ski_area_polygon, is_in_ski_area_site,
-     lift_type, difficulty, viirs_pixels, properties)
-    VALUES ($1, $2, $3, $4, $5, ST_MakeValid(ST_Force2D(ST_GeomFromGeoJSON($6)), 'method=structure'), $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
-    ON CONFLICT (key) DO UPDATE SET
-      type = EXCLUDED.type,
-      source = EXCLUDED.source,
-      geometry = EXCLUDED.geometry,
-      geometry_with_elevations = EXCLUDED.geometry_with_elevations,
-      geom = EXCLUDED.geom,
-      is_polygon = EXCLUDED.is_polygon,
-      activities = EXCLUDED.activities,
-      ski_areas = EXCLUDED.ski_areas,
-      is_basis_for_new_ski_area = EXCLUDED.is_basis_for_new_ski_area,
-      is_in_ski_area_polygon = EXCLUDED.is_in_ski_area_polygon,
-      is_in_ski_area_site = EXCLUDED.is_in_ski_area_site,
-      lift_type = EXCLUDED.lift_type,
-      difficulty = EXCLUDED.difficulty,
-      viirs_pixels = EXCLUDED.viirs_pixels,
-      properties = EXCLUDED.properties
-  `;
-
   async initialize(): Promise<void> {
-    // Connect to the persistent processing database
     const poolConfig = getPostgresPoolConfig(
       this.databaseName,
       this.postgresConfig,
@@ -74,7 +51,6 @@ export class PostgreSQLClusteringDatabase implements ClusteringDatabase {
 
     this.pool = new Pool(poolConfig);
 
-    // Test connection
     try {
       const client = await this.pool.connect();
       await client.query("SELECT 1");
@@ -88,10 +64,7 @@ export class PostgreSQLClusteringDatabase implements ClusteringDatabase {
       );
     }
 
-    // Ensure PostGIS extension is available
     await this.enablePostGIS();
-
-    // Create tables if they don't exist and truncate for fresh clustering
     await this.createTables();
     await this.truncateObjectsTable();
     await this.createIndexes();
@@ -108,14 +81,10 @@ export class PostgreSQLClusteringDatabase implements ClusteringDatabase {
   }
 
   async close(): Promise<void> {
-    // Gracefully close the main connection pool
-    // Note: We no longer delete the database since it's persistent
     if (this.pool) {
       try {
-        // Wait a bit for any pending operations to complete
         await new Promise((resolve) => setTimeout(resolve, 100));
 
-        // Check if there are any active connections
         const activeConnections = this.pool.totalCount - this.pool.idleCount;
         if (activeConnections > 0) {
           console.warn(
@@ -141,7 +110,10 @@ export class PostgreSQLClusteringDatabase implements ClusteringDatabase {
     return this.pool;
   }
 
-  private async executeQuery<T>(query: string, params: any[] = []): Promise<T> {
+  private async executeQuery<T>(
+    query: string,
+    params: SQLParamValue[] = [],
+  ): Promise<T> {
     const pool = this.ensureInitialized();
 
     const client = await pool.connect();
@@ -170,16 +142,15 @@ export class PostgreSQLClusteringDatabase implements ClusteringDatabase {
         const result = await operation(client);
         await client.query("COMMIT");
         return result;
-      } catch (error: any) {
+      } catch (error: unknown) {
         await client.query("ROLLBACK");
 
-        // Check if this is a deadlock error
-        if (error.code === "40P01" && attempt < maxRetries - 1) {
+        const pgError = error as PostgresError;
+        if (pgError.code === "40P01" && attempt < maxRetries - 1) {
           attempt++;
           console.warn(
             `Deadlock detected, retrying (attempt ${attempt}/${maxRetries})`,
           );
-          // Wait a random amount of time before retrying to reduce collision probability
           await new Promise((resolve) =>
             setTimeout(resolve, Math.random() * 100 + 50),
           );
@@ -208,186 +179,47 @@ export class PostgreSQLClusteringDatabase implements ClusteringDatabase {
     });
   }
 
-  /**
-   * Converts a MapObject to SQL parameters for insertion/update
-   */
-  private mapObjectToSQLParams(object: MapObject): any[] {
-    const geometryGeoJSON = JSON.stringify(object.geometry);
-
-    return [
-      object._key,
-      object.type,
-      (object as any).source || "unknown",
-      JSON.stringify(object.geometry),
-      JSON.stringify((object as any).geometryWithElevations || object.geometry),
-      geometryGeoJSON,
-      (object as any).isPolygon ? true : false,
-      JSON.stringify(object.activities || []),
-      JSON.stringify(object.skiAreas || []),
-      (object as any).isBasisForNewSkiArea ? true : false,
-      (object as any).isInSkiAreaPolygon ? true : false,
-      (object as any).isInSkiAreaSite ? true : false,
-      (object as any).liftType || null,
-      (object as any).difficulty || null,
-      JSON.stringify((object as any).viirsPixels || []),
-      JSON.stringify((object as any).properties || {}),
-    ];
-  }
-
-  /**
-   * Builds update SQL clauses for object field updates
-   */
-  private buildUpdateClauses(updates: Partial<MapObject>): {
-    setParts: string[];
-    values: any[];
-  } {
-    const setParts: string[] = [];
-    const values: any[] = [];
-    let paramIndex = 1;
-
-    Object.entries(updates).forEach(([field, value]) => {
-      switch (field) {
-        case "geometry":
-          const geometryGeoJSON = JSON.stringify(value);
-          setParts.push(
-            `geometry = $${paramIndex++}`,
-            `geom = ST_MakeValid(ST_Force2D(ST_GeomFromGeoJSON($${paramIndex++})), 'method=structure')`,
-          );
-          values.push(JSON.stringify(value), geometryGeoJSON);
-          break;
-        case "skiAreas":
-          setParts.push(`ski_areas = $${paramIndex++}`);
-          values.push(JSON.stringify(value));
-          break;
-        case "isBasisForNewSkiArea":
-          setParts.push(`is_basis_for_new_ski_area = $${paramIndex++}`);
-          values.push(value ? true : false);
-          break;
-        case "isInSkiAreaPolygon":
-          setParts.push(`is_in_ski_area_polygon = $${paramIndex++}`);
-          values.push(value ? true : false);
-          break;
-        case "isPolygon":
-          setParts.push(`is_polygon = $${paramIndex++}`);
-          values.push(value ? true : false);
-          break;
-        case "activities":
-          setParts.push(`activities = $${paramIndex++}`);
-          values.push(JSON.stringify(value));
-          break;
-        case "properties":
-          setParts.push(`properties = $${paramIndex++}`);
-          values.push(JSON.stringify(value));
-          break;
-      }
-    });
-
-    return { setParts, values };
-  }
-
   private async enablePostGIS(): Promise<void> {
     const pool = this.ensureInitialized();
-
-    // Enable PostGIS extension for spatial geometry types
     await pool.query("CREATE EXTENSION IF NOT EXISTS postgis");
     console.log("✅ PostGIS extension enabled");
   }
 
   private async createTables(): Promise<void> {
     const pool = this.ensureInitialized();
-
-    // Create main objects table
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS objects (
-        key TEXT PRIMARY KEY,
-        type TEXT NOT NULL,
-        source TEXT NOT NULL,
-        geometry JSONB NOT NULL,
-        geometry_with_elevations JSONB,
-        is_polygon BOOLEAN NOT NULL,
-        activities JSONB,
-        ski_areas JSONB,
-        is_basis_for_new_ski_area BOOLEAN DEFAULT FALSE,
-        is_in_ski_area_polygon BOOLEAN DEFAULT FALSE,
-        is_in_ski_area_site BOOLEAN DEFAULT FALSE,
-        lift_type TEXT,
-        difficulty TEXT,
-        viirs_pixels JSONB,
-        properties JSONB NOT NULL,
-        geom GEOMETRY(Geometry, 4326)
-      )
-    `);
-
+    await pool.query(SQL.CREATE_OBJECTS_TABLE);
     console.log("✅ Created objects table");
   }
 
   async createIndexes(): Promise<void> {
     const pool = this.ensureInitialized();
 
-    // Create spatial index using GIST
-    await pool.query(`
-      CREATE INDEX IF NOT EXISTS idx_objects_geom ON objects USING GIST (geom)
-    `);
+    await pool.query(SQL.CREATE_SPATIAL_INDEXES);
     console.log("✅ Created spatial index on geometry column");
 
-    // Create functional index on geography cast for distance queries
-    await pool.query(`
-      CREATE INDEX IF NOT EXISTS idx_objects_geog ON objects USING GIST (geography(geom))
-    `);
+    await pool.query(SQL.CREATE_GEOGRAPHY_INDEX);
     console.log("✅ Created spatial index on geography cast");
 
-    // Create optimized composite indexes for common query patterns
-    await pool.query(`
-      -- Core filtering indexes
-      CREATE INDEX IF NOT EXISTS idx_type_source ON objects(type, source);
-      CREATE INDEX IF NOT EXISTS idx_type_polygon ON objects(type, is_polygon);
-      
-      -- Ski area assignment queries  
-      CREATE INDEX IF NOT EXISTS idx_ski_areas_gin ON objects USING GIN (ski_areas);
-      CREATE INDEX IF NOT EXISTS idx_type_ski_areas ON objects(type) WHERE ski_areas = '[]'::jsonb;
-      
-      -- Unassigned object queries (critical for clustering performance)
-      CREATE INDEX IF NOT EXISTS idx_unassigned_runs ON objects(type, is_basis_for_new_ski_area) 
-        WHERE type = 'RUN' AND is_basis_for_new_ski_area = true;
-      
-      -- Source-specific queries with polygon filtering
-      CREATE INDEX IF NOT EXISTS idx_source_polygon ON objects(source, is_polygon) 
-        WHERE is_polygon = true;
-      CREATE INDEX IF NOT EXISTS idx_source_type_polygon ON objects(source, type, is_polygon);
-      
-      -- Activity-based filtering (using GIN for JSONB)
-      CREATE INDEX IF NOT EXISTS idx_activities_gin ON objects USING GIN (activities);
-      
-      -- Polygon containment queries
-      CREATE INDEX IF NOT EXISTS idx_polygon_filter ON objects(is_polygon, is_in_ski_area_polygon);
-    `);
+    await pool.query(SQL.CREATE_COMPOSITE_INDEXES);
     console.log("✅ Created optimized composite indexes");
   }
 
   async saveObject(object: MapObject): Promise<void> {
     this.ensureInitialized();
-
-    const params = this.mapObjectToSQLParams(object);
-    await this.executeQuery(
-      PostgreSQLClusteringDatabase.INSERT_OBJECT_SQL,
-      params,
-    );
+    const params = mapObjectToSQLParams(object);
+    await this.executeQuery(SQL.INSERT_OBJECT, params);
   }
 
   async saveObjects(objects: MapObject[]): Promise<void> {
     this.ensureInitialized();
 
-    // Process in optimized batches for very large datasets
     await this.processBatches(
       objects,
-      PostgreSQLClusteringDatabase.BULK_OPERATION_BATCH_SIZE,
+      BATCH_SIZES.BULK_OPERATION,
       async (batch, client) => {
         for (const object of batch) {
-          const params = this.mapObjectToSQLParams(object);
-          await client.query(
-            PostgreSQLClusteringDatabase.INSERT_OBJECT_SQL,
-            params,
-          );
+          const params = mapObjectToSQLParams(object);
+          await client.query(SQL.INSERT_OBJECT, params);
         }
       },
     );
@@ -396,7 +228,7 @@ export class PostgreSQLClusteringDatabase implements ClusteringDatabase {
   async updateObject(key: string, updates: Partial<MapObject>): Promise<void> {
     this.ensureInitialized();
 
-    const { setParts, values } = this.buildUpdateClauses(updates);
+    const { setParts, values } = buildUpdateClauses(updates);
 
     if (setParts.length > 0) {
       values.push(key);
@@ -410,13 +242,12 @@ export class PostgreSQLClusteringDatabase implements ClusteringDatabase {
   ): Promise<void> {
     this.ensureInitialized();
 
-    // Process in optimized batches for very large update sets
     await this.processBatches(
       updates,
-      PostgreSQLClusteringDatabase.BULK_OPERATION_BATCH_SIZE,
+      BATCH_SIZES.BULK_OPERATION,
       async (batch, client) => {
         for (const { key, updates: objectUpdates } of batch) {
-          const { setParts, values } = this.buildUpdateClauses(objectUpdates);
+          const { setParts, values } = buildUpdateClauses(objectUpdates);
 
           if (setParts.length > 0) {
             values.push(key);
@@ -431,14 +262,12 @@ export class PostgreSQLClusteringDatabase implements ClusteringDatabase {
   async removeObject(key: string): Promise<void> {
     this.ensureInitialized();
 
-    // First check if this is a ski area that needs association cleanup
-    const objectType = await this.executeQuery<any[]>(
+    const objectType = await this.executeQuery<Array<{ type: string }>>(
       "SELECT type FROM objects WHERE key = $1",
       [key],
     );
 
     if (objectType.length > 0 && objectType[0].type === "SKI_AREA") {
-      // Clean up all associations to this ski area
       await this.cleanUpSkiAreaAssociations(key);
     }
 
@@ -448,12 +277,11 @@ export class PostgreSQLClusteringDatabase implements ClusteringDatabase {
   private async cleanUpSkiAreaAssociations(skiAreaId: string): Promise<void> {
     this.ensureInitialized();
 
-    // Find all objects that reference this ski area using JSONB operators
-    const query = `SELECT key, ski_areas FROM objects 
+    const query = `SELECT key, ski_areas FROM objects
        WHERE ski_areas @> $1::jsonb`;
-    const affectedObjects = await this.executeQuery<any[]>(query, [
-      `["${skiAreaId}"]`,
-    ]);
+    const affectedObjects = await this.executeQuery<
+      Array<{ key: string; ski_areas: string[] }>
+    >(query, [`["${skiAreaId}"]`]);
 
     await this.executeTransaction(async (client) => {
       for (const obj of affectedObjects) {
@@ -482,7 +310,7 @@ export class PostgreSQLClusteringDatabase implements ClusteringDatabase {
     const pool = this.ensureInitialized();
 
     let query = "SELECT * FROM objects WHERE type = 'SKI_AREA'";
-    const params: any[] = [];
+    const params: SQLParamValue[] = [];
     let paramIndex = 1;
 
     if (options.onlySource) {
@@ -500,19 +328,17 @@ export class PostgreSQLClusteringDatabase implements ClusteringDatabase {
       params.push(polygonGeoJSON);
     }
 
-    // Add ORDER BY for deterministic pagination
     query += " ORDER BY key";
 
-    // Use large batch size for non-batching mode to load everything upfront
     const batchSize = options.useBatching
-      ? PostgreSQLClusteringDatabase.DEFAULT_BATCH_SIZE
+      ? BATCH_SIZES.DEFAULT
       : Number.MAX_SAFE_INTEGER;
 
     return new PostgreSQLCursor<SkiAreaObject>(
       pool,
       query,
       params,
-      (row) => this.rowToMapObject(row) as SkiAreaObject,
+      (row) => rowToMapObject(row) as SkiAreaObject,
       batchSize,
     );
   }
@@ -533,14 +359,14 @@ export class PostgreSQLClusteringDatabase implements ClusteringDatabase {
     const query = `SELECT * FROM objects WHERE type = 'SKI_AREA' AND key IN (${placeholders}) ORDER BY key`;
 
     const batchSize = useBatching
-      ? PostgreSQLClusteringDatabase.DEFAULT_BATCH_SIZE
+      ? BATCH_SIZES.DEFAULT
       : Number.MAX_SAFE_INTEGER;
 
     return new PostgreSQLCursor<SkiAreaObject>(
       pool,
       query,
       ids,
-      (row) => this.rowToMapObject(row) as SkiAreaObject,
+      (row) => rowToMapObject(row) as SkiAreaObject,
       batchSize,
     );
   }
@@ -550,14 +376,14 @@ export class PostgreSQLClusteringDatabase implements ClusteringDatabase {
 
     const query = "SELECT * FROM objects WHERE type = 'RUN' ORDER BY key";
     const batchSize = useBatching
-      ? PostgreSQLClusteringDatabase.DEFAULT_BATCH_SIZE
+      ? BATCH_SIZES.DEFAULT
       : Number.MAX_SAFE_INTEGER;
 
     return new PostgreSQLCursor<RunObject>(
       pool,
       query,
       [],
-      (row) => this.rowToMapObject(row) as RunObject,
+      (row) => rowToMapObject(row) as RunObject,
       batchSize,
     );
   }
@@ -567,14 +393,14 @@ export class PostgreSQLClusteringDatabase implements ClusteringDatabase {
 
     const query = "SELECT * FROM objects WHERE type = 'LIFT' ORDER BY key";
     const batchSize = useBatching
-      ? PostgreSQLClusteringDatabase.DEFAULT_BATCH_SIZE
+      ? BATCH_SIZES.DEFAULT
       : Number.MAX_SAFE_INTEGER;
 
     return new PostgreSQLCursor<LiftObject>(
       pool,
       query,
       [],
-      (row) => this.rowToMapObject(row) as LiftObject,
+      (row) => rowToMapObject(row) as LiftObject,
       batchSize,
     );
   }
@@ -587,13 +413,12 @@ export class PostgreSQLClusteringDatabase implements ClusteringDatabase {
 
     let query: string;
     let paramIndex = 1;
-    let params: any[];
+    let params: SQLParamValue[];
 
     const geometryGeoJSON = JSON.stringify(geometry);
 
     if (context.bufferDistanceKm !== undefined) {
-      // Use geography functional index for optimal performance
-      const bufferMeters = context.bufferDistanceKm * 1000; // Convert km to meters
+      const bufferMeters = context.bufferDistanceKm * 1000;
 
       if (context.searchType === "contains") {
         query = `
@@ -603,7 +428,6 @@ export class PostgreSQLClusteringDatabase implements ClusteringDatabase {
         `;
         params = [geometryGeoJSON, bufferMeters];
       } else {
-        // For intersects, use ST_DWithin with geography index
         query = `
           SELECT * FROM objects
           WHERE ST_DWithin(geography(geom), geography(ST_MakeValid(ST_Force2D(ST_GeomFromGeoJSON($${paramIndex++})), 'method=structure')), $${paramIndex++})
@@ -611,9 +435,8 @@ export class PostgreSQLClusteringDatabase implements ClusteringDatabase {
         `;
         params = [geometryGeoJSON, bufferMeters];
       }
-      paramIndex = 3; // Reset to 3 since we used parameters 1-2
+      paramIndex = 3;
     } else {
-      // Use direct geometry (no buffering)
       if (context.searchType === "contains") {
         query = `
           SELECT * FROM objects
@@ -628,11 +451,10 @@ export class PostgreSQLClusteringDatabase implements ClusteringDatabase {
         `;
       }
       params = [geometryGeoJSON];
-      paramIndex = 2; // Reset to 2 since we used parameter 1
+      paramIndex = 2;
     }
 
     if (context.activities.length > 0) {
-      // Use JSONB operators for activity filtering
       const activityConditions = context.activities
         .map(() => `activities @> $${paramIndex++}::jsonb`)
         .join(" OR ");
@@ -642,12 +464,10 @@ export class PostgreSQLClusteringDatabase implements ClusteringDatabase {
       });
     }
 
-    // Filter out objects that already belong to this ski area
     query += ` AND NOT (ski_areas @> $${paramIndex++}::jsonb)`;
     params.push(JSON.stringify([context.id]));
 
     if (context.excludeObjectsAlreadyInSkiArea) {
-      // Exclude objects that are already assigned to any ski area
       query += " AND (ski_areas = '[]'::jsonb OR ski_areas IS NULL)";
     }
 
@@ -663,8 +483,8 @@ export class PostgreSQLClusteringDatabase implements ClusteringDatabase {
     return performanceMonitor.measure(
       "Find nearby objects",
       async () => {
-        const rows = await this.executeQuery<any[]>(query, params);
-        const allFound = rows.map(this.rowToMapObject);
+        const rows = await this.executeQuery<ObjectRow[]>(query, params);
+        const allFound = rows.map((row) => rowToMapObject(row));
         allFound.forEach((object) => context.alreadyVisited.push(object._key));
         return allFound;
       },
@@ -677,13 +497,13 @@ export class PostgreSQLClusteringDatabase implements ClusteringDatabase {
   async getObjectsForSkiArea(skiAreaId: string): Promise<MapObject[]> {
     this.ensureInitialized();
 
-    const query = `SELECT * FROM objects 
+    const query = `SELECT * FROM objects
        WHERE ski_areas @> $1::jsonb AND type != 'SKI_AREA'`;
-    const rows = await this.executeQuery<any[]>(query, [
+    const rows = await this.executeQuery<ObjectRow[]>(query, [
       JSON.stringify([skiAreaId]),
     ]);
 
-    return rows.map(this.rowToMapObject);
+    return rows.map((row) => rowToMapObject(row));
   }
 
   async markObjectsAsPartOfSkiArea(
@@ -697,16 +517,14 @@ export class PostgreSQLClusteringDatabase implements ClusteringDatabase {
       return;
     }
 
-    // Sort object keys to ensure consistent ordering and prevent deadlocks
     const sortedKeys = [...objectKeys].sort();
 
     await this.executeTransaction(async (client) => {
-      // Atomic update using JSONB operators - adds ski area ID only if not already present
       const skiAreaIdJson = JSON.stringify([skiAreaId]);
 
       await client.query(
-        `UPDATE objects 
-         SET ski_areas = CASE 
+        `UPDATE objects
+         SET ski_areas = CASE
            WHEN ski_areas @> $1::jsonb THEN ski_areas
            ELSE COALESCE(ski_areas, '[]'::jsonb) || $1::jsonb
          END,
@@ -722,14 +540,14 @@ export class PostgreSQLClusteringDatabase implements ClusteringDatabase {
     this.ensureInitialized();
 
     const query = `
-      SELECT * FROM objects 
-      WHERE type = 'RUN' 
+      SELECT * FROM objects
+      WHERE type = 'RUN'
         AND is_basis_for_new_ski_area = true
       LIMIT 1
     `;
 
-    const rows = await this.executeQuery<any[]>(query, []);
-    const run = rows.length > 0 ? this.rowToMapObject(rows[0]) : null;
+    const rows = await this.executeQuery<ObjectRow[]>(query, []);
+    const run = rows.length > 0 ? rowToMapObject(rows[0]) : null;
 
     if (run && run.activities.length === 0) {
       throw new Error("No activities for run");
@@ -741,13 +559,12 @@ export class PostgreSQLClusteringDatabase implements ClusteringDatabase {
     this.ensureInitialized();
 
     const query = "SELECT * FROM objects WHERE type = 'SKI_AREA'";
-    const rows = await this.executeQuery<any[]>(query, []);
+    const rows = await this.executeQuery<ObjectRow[]>(query, []);
 
-    const self = this;
     return {
       async *[Symbol.asyncIterator]() {
         for (const row of rows) {
-          yield self.rowToMapObject(row) as SkiAreaObject;
+          yield rowToMapObject(row) as SkiAreaObject;
         }
       },
     };
@@ -757,44 +574,9 @@ export class PostgreSQLClusteringDatabase implements ClusteringDatabase {
     this.ensureInitialized();
 
     const query = "SELECT * FROM objects WHERE key = $1";
-    const rows = await this.executeQuery<any[]>(query, [objectId]);
+    const rows = await this.executeQuery<ObjectRow[]>(query, [objectId]);
 
-    return rows.length > 0 ? this.rowToMapObject(rows[0]) : null;
-  }
-
-  private rowToMapObject(row: any): MapObject {
-    const baseObject: any = {
-      _key: row.key,
-      type: row.type as MapObjectType,
-      geometry: row.geometry,
-      activities: row.activities || [],
-      skiAreas: row.ski_areas || [],
-      source: row.source,
-      isPolygon: Boolean(row.is_polygon),
-      isBasisForNewSkiArea: Boolean(row.is_basis_for_new_ski_area),
-      isInSkiAreaPolygon: Boolean(row.is_in_ski_area_polygon),
-      properties: row.properties || {},
-    };
-
-    // Add type-specific fields
-    if (row.type === MapObjectType.SkiArea) {
-      baseObject.id = row.key;
-    } else if (row.type === MapObjectType.Lift) {
-      baseObject.geometryWithElevations =
-        row.geometry_with_elevations || row.geometry;
-      baseObject.liftType = row.lift_type;
-      baseObject.isInSkiAreaSite = Boolean(row.is_in_ski_area_site);
-      baseObject.properties = row.properties || { places: [] };
-    } else if (row.type === MapObjectType.Run) {
-      baseObject.geometryWithElevations =
-        row.geometry_with_elevations || row.geometry;
-      baseObject.difficulty = row.difficulty;
-      baseObject.viirsPixels = row.viirs_pixels || [];
-      baseObject.isInSkiAreaSite = Boolean(row.is_in_ski_area_site);
-      baseObject.properties = row.properties || { places: [] };
-    }
-
-    return baseObject as MapObject;
+    return rows.length > 0 ? rowToMapObject(rows[0]) : null;
   }
 
   async getObjectDerivedSkiAreaGeometry(
@@ -803,144 +585,34 @@ export class PostgreSQLClusteringDatabase implements ClusteringDatabase {
     this.ensureInitialized();
 
     try {
-      // Single query to get union of member geometries or fall back to ski area geometry
-      const query = `
-        WITH member_geometries AS (
-          SELECT geom FROM objects 
-          WHERE ski_areas @> $1::jsonb AND type != 'SKI_AREA'
-        ),
-        ski_area_geometry AS (
-          SELECT geom FROM objects 
-          WHERE key = $2 AND type = 'SKI_AREA'
-        ),
-        union_result AS (
-          SELECT
-            CASE
-              WHEN COUNT(*) > 0 THEN ST_AsGeoJSON(ST_Union(ST_MakeValid(geom, 'method=structure')))::jsonb
-              ELSE NULL
-            END as union_geometry
-          FROM member_geometries
-        )
-        SELECT 
-          COALESCE(
-            union_result.union_geometry,
-            ST_AsGeoJSON(ski_area_geometry.geom)::jsonb
-          ) as geometry
-        FROM union_result 
-        CROSS JOIN ski_area_geometry
-      `;
-
-      const rows = await this.executeQuery<any[]>(query, [
-        JSON.stringify([skiAreaId]),
-        skiAreaId,
-      ]);
+      const rows = await this.executeQuery<Array<{ geometry: GeoJSON.Geometry }>>(
+        SQL.DERIVED_GEOMETRY,
+        [JSON.stringify([skiAreaId]), skiAreaId],
+      );
 
       if (rows.length === 0 || !rows[0].geometry) {
         throw new Error(`No geometry found for ski area ${skiAreaId}`);
       }
 
-      return rows[0].geometry as GeoJSON.Geometry;
+      return rows[0].geometry;
     } catch (error) {
       console.warn(
         `Failed to get derived geometry for ski area ${skiAreaId}, querying ski area geometry directly:`,
         error,
       );
 
-      // Fallback: just get the ski area's own geometry
       const fallbackQuery =
         "SELECT geometry FROM objects WHERE key = $1 AND type = 'SKI_AREA'";
-      const rows = await this.executeQuery<any[]>(fallbackQuery, [skiAreaId]);
+      const rows = await this.executeQuery<Array<{ geometry: GeoJSON.Geometry }>>(
+        fallbackQuery,
+        [skiAreaId],
+      );
 
       if (rows.length === 0) {
         throw new Error(`Ski area ${skiAreaId} not found`);
       }
 
-      return rows[0].geometry as GeoJSON.Geometry;
+      return rows[0].geometry;
     }
-  }
-}
-
-/**
- * Empty cursor that returns no results
- */
-class EmptyCursor<T> implements Cursor<T> {
-  async nextBatch(): Promise<T[] | null> {
-    return null;
-  }
-
-  async all(): Promise<T[]> {
-    return [];
-  }
-}
-
-/**
- * Generic cursor that fetches data from PostgreSQL in batches to minimize memory usage.
- * Instead of loading all results upfront, this cursor fetches data on-demand using LIMIT/OFFSET.
- */
-export class PostgreSQLCursor<T extends MapObject> implements Cursor<T> {
-  private offset = 0;
-  private readonly batchSize: number;
-  private isExhausted = false;
-
-  constructor(
-    private pool: Pool,
-    private query: string,
-    private params: any[],
-    private rowMapper: (row: any) => T,
-    batchSize = 1000,
-  ) {
-    this.batchSize = batchSize;
-
-    // Validate that queries using batching have ORDER BY for deterministic results
-    if (batchSize < Number.MAX_SAFE_INTEGER && !this.hasOrderBy(query)) {
-      throw new Error(
-        "Query must include ORDER BY clause for deterministic pagination. " +
-          "Without ORDER BY, OFFSET-based batching can skip or duplicate rows.\n" +
-          `Query: ${query.substring(0, 100)}...`,
-      );
-    }
-  }
-
-  /**
-   * Checks if the query contains an ORDER BY clause.
-   */
-  private hasOrderBy(query: string): boolean {
-    const normalizedQuery = query.trim().replace(/\s+/g, " ").toUpperCase();
-    return normalizedQuery.includes(" ORDER BY ");
-  }
-
-  async nextBatch(): Promise<T[] | null> {
-    if (this.isExhausted) {
-      return null;
-    }
-
-    const client = await this.pool.connect();
-    try {
-      const paginatedQuery = `${this.query} LIMIT $${this.params.length + 1} OFFSET $${this.params.length + 2}`;
-      const paginatedParams = [...this.params, this.batchSize, this.offset];
-
-      const result = await client.query(paginatedQuery, paginatedParams);
-
-      // Update offset BEFORE mapping to prevent corruption if rowMapper throws
-      this.offset += result.rows.length;
-
-      if (result.rows.length < this.batchSize) {
-        this.isExhausted = true;
-      }
-
-      const batch = result.rows.map(this.rowMapper);
-      return batch.length > 0 ? batch : null;
-    } finally {
-      client.release();
-    }
-  }
-
-  async all(): Promise<T[]> {
-    const results: T[] = [];
-    let batch: T[] | null;
-    while ((batch = await this.nextBatch()) !== null) {
-      results.push(...batch);
-    }
-    return results;
   }
 }

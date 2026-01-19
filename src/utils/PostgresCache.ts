@@ -160,7 +160,7 @@ export class PostgresCache<T> {
     return this.pool;
   }
 
-  private serializeValue(value: T): any {
+  private serializeValue(value: T): T | string {
     if (this.valueType === "REAL") {
       // For REAL type, store number directly (null values are stored as SQL NULL)
       return value;
@@ -170,7 +170,7 @@ export class PostgresCache<T> {
     }
   }
 
-  private parseValue(dbValue: any): T {
+  private parseValue(dbValue: T | null): T {
     if (this.valueType === "REAL") {
       // For REAL type, return the number directly (SQL NULL becomes JavaScript null)
       return dbValue as T;
@@ -312,7 +312,7 @@ export class PostgresCache<T> {
       const timestamp = Date.now();
 
       // Build bulk insert query
-      const values: any[] = [];
+      const values: (string | number | T)[] = [];
       const placeholders: string[] = [];
 
       Array.from(uniqueEntries.entries()).forEach(([key, value], i) => {

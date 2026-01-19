@@ -134,13 +134,21 @@ export class GeoPackageMerger {
     }
 
     // Get column info to build proper INSERT statement
+    interface ColumnInfo {
+      cid: number;
+      name: string;
+      type: string;
+      notnull: number;
+      dflt_value: string | null;
+      pk: number;
+    }
     const columns = targetDb
       .prepare(`PRAGMA table_info(${tableName})`)
-      .all() as any[];
+      .all() as ColumnInfo[];
     const allColumnNames = columns.map((col) => col.name);
 
     // Check if there's an auto-incrementing primary key (typically 'id')
-    const pkColumn = columns.find((col: any) => col.pk === 1);
+    const pkColumn = columns.find((col) => col.pk === 1);
     const hasAutoIncrementPK = pkColumn && pkColumn.name === "id";
 
     let columnList: string;
@@ -179,42 +187,48 @@ export class GeoPackageMerger {
     `);
 
     let insertedCount = 0;
-    const insertMany = targetDb.transaction((rows: any[]) => {
-      for (const row of rows) {
-        // Check for semantic duplicates based on feature_id using the set
-        if (
-          hasFeatureId &&
-          row["feature_id"] &&
-          existingFeatureIds.has(row["feature_id"])
-        ) {
-          continue; // Skip this row silently
-        }
-
-        const values = columnsToInsert.map((col) => row[col]);
-        try {
-          const result = insertStmt.run(...values);
-          if (result.changes > 0) {
-            insertedCount++;
-            // Add to existing set to avoid duplicates within the same batch
-            if (hasFeatureId && row["feature_id"]) {
-              existingFeatureIds.add(row["feature_id"]);
-            }
+    const insertMany = targetDb.transaction(
+      (rows: Record<string, unknown>[]) => {
+        for (const row of rows) {
+          // Check for semantic duplicates based on feature_id using the set
+          const featureId = row["feature_id"] as string | undefined;
+          if (hasFeatureId && featureId && existingFeatureIds.has(featureId)) {
+            continue; // Skip this row silently
           }
-        } catch (error) {
-          // Continue with other rows even if one fails
+
+          const values = columnsToInsert.map((col) => row[col]);
+          try {
+            const result = insertStmt.run(...values);
+            if (result.changes > 0) {
+              insertedCount++;
+              // Add to existing set to avoid duplicates within the same batch
+              if (hasFeatureId && featureId) {
+                existingFeatureIds.add(featureId);
+              }
+            }
+          } catch (error) {
+            // Log the error but continue with other rows
+            console.warn(
+              `Failed to insert row into ${tableName}:`,
+              error instanceof Error ? error.message : error,
+            );
+          }
         }
-      }
-    });
+      },
+    );
 
     // Process in batches to avoid memory issues
     const sourceStmt = sourceDb.prepare(`
-      SELECT * FROM ${tableName} 
-      ORDER BY ROWID 
+      SELECT * FROM ${tableName}
+      ORDER BY ROWID
       LIMIT ? OFFSET ?
     `);
 
     for (let offset = 0; offset < totalRows.count; offset += this.BATCH_SIZE) {
-      const batch = sourceStmt.all(this.BATCH_SIZE, offset);
+      const batch = sourceStmt.all(
+        this.BATCH_SIZE,
+        offset,
+      ) as Record<string, unknown>[];
       insertMany(batch);
     }
 
@@ -251,35 +265,48 @@ export class GeoPackageMerger {
       return 0;
     }
 
+    interface ColumnInfo {
+      cid: number;
+      name: string;
+      type: string;
+      notnull: number;
+      dflt_value: string | null;
+      pk: number;
+    }
     const columns = targetDb
       .prepare(`PRAGMA table_info(${tableName})`)
-      .all() as any[];
+      .all() as ColumnInfo[];
     const allColumnNames = columns.map((col) => col.name);
 
     const columnList = allColumnNames.join(", ");
     const placeholders = allColumnNames.map(() => "?").join(", ");
 
     const insertStmt = targetDb.prepare(`
-      INSERT INTO ${tableName} (${columnList}) 
+      INSERT INTO ${tableName} (${columnList})
       VALUES (${placeholders})
     `);
 
-    const insertMany = targetDb.transaction((rows: any[]) => {
-      for (const row of rows) {
-        const values = allColumnNames.map((col) => row[col]);
-        insertStmt.run(...values);
-      }
-    });
+    const insertMany = targetDb.transaction(
+      (rows: Record<string, unknown>[]) => {
+        for (const row of rows) {
+          const values = allColumnNames.map((col) => row[col]);
+          insertStmt.run(...values);
+        }
+      },
+    );
 
     // Process in batches to avoid memory issues
     const sourceStmt = sourceDb.prepare(`
-      SELECT * FROM ${tableName} 
-      ORDER BY ROWID 
+      SELECT * FROM ${tableName}
+      ORDER BY ROWID
       LIMIT ? OFFSET ?
     `);
 
     for (let offset = 0; offset < totalRows.count; offset += this.BATCH_SIZE) {
-      const batch = sourceStmt.all(this.BATCH_SIZE, offset);
+      const batch = sourceStmt.all(
+        this.BATCH_SIZE,
+        offset,
+      ) as Record<string, unknown>[];
       insertMany(batch);
     }
 
@@ -342,7 +369,10 @@ export class GeoPackageMerger {
       }
     } catch (error) {
       // Don't fail the entire operation for metadata issues
-      // Error will be logged by the caller
+      console.warn(
+        `Failed to update GeoPackage metadata for table ${tableName}:`,
+        error instanceof Error ? error.message : error,
+      );
     }
   }
 

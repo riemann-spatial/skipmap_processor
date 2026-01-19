@@ -245,7 +245,7 @@ export default class Geocoder {
         throw new Error(errorMessage);
       }
 
-      let response: any;
+      let response: PhotonGeocode["response"] | GeocodeApiResponse["response"];
       try {
         response = await fetchResponse.json();
       } catch (error) {
@@ -257,7 +257,7 @@ export default class Geocoder {
         url: url,
         response: response,
         timestamp: currentTimestamp(),
-      };
+      } as RawGeocode;
 
       await this.diskCache.set(geohash, data);
       return data;
