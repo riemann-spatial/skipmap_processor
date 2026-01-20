@@ -20,13 +20,25 @@ services:
     environment:
       - POSTGRES_USER=dev
       - POSTGRES_PASSWORD=dev
-      #- BBOX=[10.74827, 46.81017, 11.08733, 47.00510]
-      - BBOX=[11.85573,47.223133,12.119387,47.42013 ]
+      # - BBOX=[10.74827, 46.81017, 11.08733, 47.00510] # Ötztal large
+      - BBOX=[10.92403, 46.84461, 11.08737, 46.97438] # Ötztal small
+      #- BBOX=[11.85573,47.223133,12.119387,47.42013 ] # Innsbruck, Austria
       - OUTPUT_TO_FILES=1
       - OUTPUT_TO_POSTGIS=1
-      - ELEVATION_SERVER_URL=https://s3.amazonaws.com/elevation-tiles-prod/geotiff
-      - ELEVATION_SERVER_TYPE=aws-terrain-tiles
+      # Elevation enrichment (choose ONE backend)
       - ELEVATION_SERVER_ZOOM=15
+      #
+      # Option A: AWS Terrain Tiles (GeoTIFF tiles)
+      # - ELEVATION_SERVER_URL=https://s3.amazonaws.com/elevation-tiles-prod/geotiff
+      # - ELEVATION_SERVER_TYPE=aws-terrain-tiles
+      #
+      # Option B: WCS (GeoTIFF via GetCoverage) - example: Tyrol terrain WCS (https://www.data.gv.at/datasets/0454f5f3-1d8c-464e-847d-541901eb021a?locale=de)
+      # See capabilities: https://gis.tirol.gv.at/arcgis/services/Service_Public/terrain/MapServer/WCSServer?request=GetCapabilities&service=WCS
+      - ELEVATION_SERVER_URL=https://gis.tirol.gv.at/arcgis/services/Service_Public/terrain/MapServer/WCSServer
+      - ELEVATION_SERVER_TYPE=wcs
+      - ELEVATION_WCS_COVERAGE_ID=Gelaendemodell_50cm_M28 # Gelaendemodell_5m_M28
+
+      - GENERATE_MBTILES=1 # results in mbtiles files for runs, lifts and ski areas, as well as a combined mbtiles file
       # Set to true to use bilinear interpolation for elevation values, false for raw raster cell values
       - INTERPOLATE_HEIGHT_INFORMATION=true
       # Set to false to only start PostgreSQL without running the processing pipeline

@@ -318,7 +318,7 @@ export class PostGISDataStore {
           const numCols = 17;
           const offset = idx * numCols;
           placeholders.push(
-            `($${offset + 1}, ST_GeomFromGeoJSON($${offset + 2}), $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8}, $${offset + 9}, $${offset + 10}, $${offset + 11}, $${offset + 12}, $${offset + 13}, $${offset + 14}, $${offset + 15}, $${offset + 16}, $${offset + 17})`,
+            `($${offset + 1}, ST_Force3D(ST_GeomFromGeoJSON($${offset + 2})), $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8}, $${offset + 9}, $${offset + 10}, $${offset + 11}, $${offset + 12}, $${offset + 13}, $${offset + 14}, $${offset + 15}, $${offset + 16}, $${offset + 17})`,
           );
           values.push(
             feature.feature_id,
@@ -426,7 +426,7 @@ export class PostGISDataStore {
           const numCols = 17;
           const offset = idx * numCols;
           placeholders.push(
-            `($${offset + 1}, ST_GeomFromGeoJSON($${offset + 2}), $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8}, $${offset + 9}, $${offset + 10}, $${offset + 11}, $${offset + 12}, $${offset + 13}, $${offset + 14}, $${offset + 15}, $${offset + 16}, $${offset + 17})`,
+            `($${offset + 1}, ST_Force3D(ST_GeomFromGeoJSON($${offset + 2})), $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8}, $${offset + 9}, $${offset + 10}, $${offset + 11}, $${offset + 12}, $${offset + 13}, $${offset + 14}, $${offset + 15}, $${offset + 16}, $${offset + 17})`,
           );
           values.push(
             feature.feature_id,

@@ -130,7 +130,7 @@ This will show you each cache table with its size and row count, and prompt you 
 
 Features will be augmented with elevation data.
 
-The processor supports two types of elevation servers:
+The processor supports multiple elevation sources:
 
 **Racemap:**
 Set `ELEVATION_SERVER_URL` to an endpoint that can receive POST requests in the format of https://github.com/racemap/elevation-service.
@@ -151,6 +151,24 @@ ELEVATION_SERVER_ZOOM="14,12"  # optional, comma-separated list of zoom levels t
 ```
 
 The processor uses the batch POST endpoint (`/data/{id}/elevation`) to fetch elevations for multiple coordinates at once. It will attempt each zoom level in order, falling back to the next zoom level for coordinates that return null (no data available).
+
+**WCS (GeoTIFF via GetCoverage):**
+For regional DEM datasets published as an OGC WCS endpoint that can return GeoTIFF. Example (Tyrol terrain WCS):
+[`GetCapabilities`](https://gis.tirol.gv.at/arcgis/services/Service_Public/terrain/MapServer/WCSServer?request=GetCapabilities&service=WCS)
+
+```bash
+ELEVATION_SERVER_URL="https://gis.tirol.gv.at/arcgis/services/Service_Public/terrain/MapServer/WCSServer"
+ELEVATION_SERVER_TYPE="wcs"
+ELEVATION_SERVER_ZOOM="15"
+ELEVATION_WCS_COVERAGE_ID="Gelaendemodell_5m_M28"
+ELEVATION_WCS_VERSION="1.0.0"
+ELEVATION_WCS_FORMAT="image/tiff"
+ELEVATION_WCS_CRS="EPSG:4326"
+# EPSG:4326 axis order can be server-dependent; try lonlat first, then latlon if you get empty/shifted results.
+ELEVATION_WCS_AXIS_ORDER="lonlat"
+ELEVATION_WCS_TILE_SIZE="256"
+ELEVATION_WCS_NODATA_VALUE="-32768"
+```
 
 ### Reverse geocoding
 
@@ -202,7 +220,7 @@ Riggs, G. A. & Hall, D. K. (2023). VIIRS/NPP Snow Cover Daily L3 Global 375m SIN
 
 ### Mapbox Vector Tiles
 
-Pass `GENERATE_TILES=1` to enable generation of Mapbox Vector Tiles (MVT) output. This will output an `.mbtiles` file in the output directory.
+Pass `GENERATE_MBILES=1` to enable generation of Mapbox Vector Tiles (MVT) output. This will output an `.mbtiles` file in the output directory.
 
 ## Issue reporting
 

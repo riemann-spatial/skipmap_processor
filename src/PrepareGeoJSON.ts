@@ -36,6 +36,11 @@ import {
 } from "./transforms/StreamTransforms";
 import { RunNormalizerAccumulator } from "./transforms/accumulator/RunNormalizerAccumulator";
 
+function isCompileNewEnabled(): boolean {
+  const compileNew = (process.env.COMPILE_NEW ?? "true").toLowerCase();
+  return compileNew !== "false" && compileNew !== "0";
+}
+
 async function createElevationTransform(
   elevationServerConfig: ElevationServerConfig | null,
   postgresConfig: PostgresConfig,
@@ -47,6 +52,7 @@ async function createElevationTransform(
   const processor = await createElevationProcessor(
     elevationServerConfig,
     postgresConfig,
+    { clearCache: isCompileNewEnabled() },
   );
   return { processor, transform: processor.processFeature };
 }

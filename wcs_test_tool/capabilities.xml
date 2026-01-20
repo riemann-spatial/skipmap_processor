@@ -1,0 +1,250 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<wcs:Capabilities xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+ xmlns:ows="http://www.opengis.net/ows/2.0"
+ xmlns:wcs="http://www.opengis.net/wcs/2.0"
+ xmlns:gml="http://www.opengis.net/gml/3.2"
+ xmlns:crs="http://www.opengis.net/wcs/service-extension/crs/1.0"
+ xmlns:int="http://www.opengis.net/WCS_service-extension_interpolation/1.0"
+ xmlns="http://www.opengis.net/ows/2.0"
+ xmlns:xlink="http://www.w3.org/1999/xlink"
+ xsi:schemaLocation="http://www.opengis.net/wcs/2.0 http://schemas.opengis.net/wcs/2.0/wcsAll.xsd" version="2.0.1">
+  <ows:ServiceIdentification>
+    <ows:Title>Service_Public_terrain</ows:Title>
+  <ows:ServiceType>OGC WCS</ows:ServiceType>
+  <ows:ServiceTypeVersion>2.0.1</ows:ServiceTypeVersion>
+  <ows:ServiceTypeVersion>1.1.2</ows:ServiceTypeVersion>
+  <ows:ServiceTypeVersion>1.1.1</ows:ServiceTypeVersion>
+  <ows:ServiceTypeVersion>1.1.0</ows:ServiceTypeVersion>
+  <ows:ServiceTypeVersion>1.0.0</ows:ServiceTypeVersion>
+  <ows:Profile>http://www.opengis.net/spec/WCS/2.0/conf/core</ows:Profile>
+  <ows:Profile>
+    http://www.opengis.net/spec/WCS_protocol-binding_get-kvp/1.0.1
+  </ows:Profile>
+  <ows:Profile>
+    http://www.opengis.net/spec/WCS_protocol-binding_post-xml/1.0
+  </ows:Profile>
+  <ows:Profile>
+    http://www.opengis.net/spec/WCS_service-extension_crs/1.0/conf/crs-gridded-coverage
+  </ows:Profile>
+  <ows:Profile>
+    http://www.opengis.net/spec/WCS_geotiff-coverages/1.0/conf/geotiff-coverage
+  </ows:Profile>
+  <ows:Profile>
+    http://www.opengis.net/spec/GMLCOV/1.0/conf/gml
+  </ows:Profile>
+  <ows:Profile>
+    http://www.opengis.net/spec/GMLCOV/1.0/conf/special-format
+  </ows:Profile>
+  <ows:Profile>
+    http://www.opengis.net/spec/GMLCOV/1.0/conf/multipart
+  </ows:Profile>
+  <ows:Profile>
+    http://www.opengis.net/spec/WCS_service-extension_scaling/1.0/conf/scaling
+  </ows:Profile>
+  <ows:Profile>
+    http://www.opengis.net/spec/WCS_service-extension_crs/1.0/conf/crs
+  </ows:Profile>
+  <ows:Profile>
+    http://www.opengis.net/spec/WCS_service-extension_interpolation/1.0/conf/interpolation
+  </ows:Profile>
+  <ows:Profile>
+    http://www.opengis.net/spec/WCS_service-extension_interpolation/1.0/conf/nearest-neighbor
+  </ows:Profile>
+  <ows:Profile>
+    http://www.opengis.net/spec/WCS_service-extension_interpolation/1.0/conf/linear
+  </ows:Profile>
+  <ows:Profile>
+    http://www.opengis.net/spec/WCS_service-extension_interpolation/1.0/conf/cubic
+  </ows:Profile>
+  <ows:Profile>
+    http://www.opengis.net/spec/WCS_service-extension_range-subsetting/1.0/conf/record-subsetting
+  </ows:Profile>
+  <ows:Fees>none</ows:Fees>
+  <ows:AccessConstraints>CC BY 4.0 AT</ows:AccessConstraints>
+  </ows:ServiceIdentification>
+  <ows:ServiceProvider>
+    <ows:ProviderName>Amt der Tiroler Landesregierung - Province of Tyrol</ows:ProviderName>
+    <ows:ProviderSite xlink:href="https://www.tirol.gv.at/sicherheit/geoinformation/"/>
+    <ows:ServiceContact>
+      <ows:ContactInfo>
+        <ows:Phone>
+          <ows:Voice>+43 512 508 4301</ows:Voice>
+        </ows:Phone>
+        <ows:Address>
+          <ows:DeliveryPoint>Herrengasse 1-3</ows:DeliveryPoint>
+          <ows:City>Innsbruck</ows:City>
+          <ows:AdministrativeArea>Tirol</ows:AdministrativeArea>
+          <ows:PostalCode>6020</ows:PostalCode>
+          <ows:Country>Austria</ows:Country>
+          <ows:ElectronicMailAddress>geoinformation@tirol.gv.at</ows:ElectronicMailAddress>
+        </ows:Address>
+        <ows:OnlineResource xlink:href="https://gis.tirol.gv.at/arcgis/services/Service_Public/terrain/MapServer/WCSServer"/>
+        <ows:HoursOfService>7:00 to 17:00</ows:HoursOfService>
+      </ows:ContactInfo>
+    </ows:ServiceContact>
+  </ows:ServiceProvider>
+  <ows:OperationsMetadata>
+    <ows:Operation name="GetCapabilities">
+      <ows:DCP>
+        <ows:HTTP>
+          <ows:Get xlink:href="https://gis.tirol.gv.at/arcgis/services/Service_Public/terrain/MapServer/WCSServer"/>
+          <ows:Post xlink:href="https://gis.tirol.gv.at/arcgis/services/Service_Public/terrain/MapServer/WCSServer">
+          </ows:Post>
+        </ows:HTTP>
+      </ows:DCP>
+    </ows:Operation>
+    <ows:Operation name="DescribeCoverage">
+      <ows:DCP>
+        <ows:HTTP>
+          <ows:Get xlink:href="https://gis.tirol.gv.at/arcgis/services/Service_Public/terrain/MapServer/WCSServer"/>
+          <ows:Post xlink:href="https://gis.tirol.gv.at/arcgis/services/Service_Public/terrain/MapServer/WCSServer">
+          </ows:Post>
+        </ows:HTTP>
+      </ows:DCP>
+    </ows:Operation>
+    <ows:Operation name="GetCoverage">
+      <ows:DCP>
+        <ows:HTTP>
+          <ows:Get xlink:href="https://gis.tirol.gv.at/arcgis/services/Service_Public/terrain/MapServer/WCSServer"/>
+          <ows:Post xlink:href="https://gis.tirol.gv.at/arcgis/services/Service_Public/terrain/MapServer/WCSServer">
+          </ows:Post>
+        </ows:HTTP>
+      </ows:DCP>
+    </ows:Operation>
+    <ows:Constraint name="PostEncoding">
+      <ows:AllowedValues>
+        <ows:Value>XML</ows:Value>
+      </ows:AllowedValues>
+    </ows:Constraint>
+  </ows:OperationsMetadata>
+  <wcs:ServiceMetadata>
+    <wcs:formatSupported>image/tiff</wcs:formatSupported>
+    <wcs:formatSupported>image/netcdf</wcs:formatSupported>
+    <wcs:Extension>
+      <crs:CrsMetadata>
+			   <crs:crsSupported>http://www.opengis.net/def/crs/EPSG/0/4326</crs:crsSupported>
+        <crs:crsSupported>http://www.opengis.net/def/crs/EPSG/0/31254</crs:crsSupported>
+        <crs:crsSupported>http://www.opengis.net/def/crs/EPSG/0/31255</crs:crsSupported>
+      </crs:CrsMetadata>
+      <int:InterpolationMetadata>
+        <int:InterpolationSupported>http://www.opengis.net/def/interpolation/OGC/1/nearest-neighbor</int:InterpolationSupported>
+        <int:InterpolationSupported>http://www.opengis.net/def/interpolation/OGC/1/linear</int:InterpolationSupported>
+        <int:InterpolationSupported>http://www.opengis.net/def/interpolation/OGC/1/cubic</int:InterpolationSupported>
+      </int:InterpolationMetadata>
+    </wcs:Extension>
+  </wcs:ServiceMetadata>
+  <wcs:Contents>
+    <wcs:CoverageSummary>
+      <ows:WGS84BoundingBox>
+        <ows:LowerCorner>10.083071490112653 46.619445452412883</ows:LowerCorner>
+        <ows:UpperCorner>13.0296998888852578 47.781267545347184</ows:UpperCorner>
+      </ows:WGS84BoundingBox>
+      <wcs:CoverageId>Gelaendemodell_5m_M28</wcs:CoverageId>
+      <wcs:CoverageSubtype>RectifiedGridCoverage</wcs:CoverageSubtype>
+    </wcs:CoverageSummary>
+    <wcs:CoverageSummary>
+      <ows:WGS84BoundingBox>
+        <ows:LowerCorner>10.0848731175985282 46.619445452412883</ows:LowerCorner>
+        <ows:UpperCorner>13.0296998888852578 47.7812675435097489</ows:UpperCorner>
+      </ows:WGS84BoundingBox>
+      <wcs:CoverageId>Oberflaechenmodell_5m_M28</wcs:CoverageId>
+      <wcs:CoverageSubtype>RectifiedGridCoverage</wcs:CoverageSubtype>
+    </wcs:CoverageSummary>
+    <wcs:CoverageSummary>
+      <ows:WGS84BoundingBox>
+        <ows:LowerCorner>10.083071490112653 46.619445452412883</ows:LowerCorner>
+        <ows:UpperCorner>13.0296998888852578 47.781267545347184</ows:UpperCorner>
+      </ows:WGS84BoundingBox>
+      <wcs:CoverageId>Gelaendeneigung-Prozent</wcs:CoverageId>
+      <wcs:CoverageSubtype>RectifiedGridCoverage</wcs:CoverageSubtype>
+    </wcs:CoverageSummary>
+    <wcs:CoverageSummary>
+      <ows:WGS84BoundingBox>
+        <ows:LowerCorner>10.083071490112653 46.619445452412883</ows:LowerCorner>
+        <ows:UpperCorner>13.0296998888852578 47.781267545347184</ows:UpperCorner>
+      </ows:WGS84BoundingBox>
+      <wcs:CoverageId>Gelaendeneigung-Grad</wcs:CoverageId>
+      <wcs:CoverageSubtype>RectifiedGridCoverage</wcs:CoverageSubtype>
+    </wcs:CoverageSummary>
+    <wcs:CoverageSummary>
+      <ows:WGS84BoundingBox>
+        <ows:LowerCorner>10.083071490112653 46.619445452412883</ows:LowerCorner>
+        <ows:UpperCorner>13.0296998888852578 47.781267545347184</ows:UpperCorner>
+      </ows:WGS84BoundingBox>
+      <wcs:CoverageId>Gelaendeneigung_Wintersport-Grad</wcs:CoverageId>
+      <wcs:CoverageSubtype>RectifiedGridCoverage</wcs:CoverageSubtype>
+    </wcs:CoverageSummary>
+    <wcs:CoverageSummary>
+      <ows:WGS84BoundingBox>
+        <ows:LowerCorner>10.083071490112653 46.619445452412883</ows:LowerCorner>
+        <ows:UpperCorner>13.0296998888852578 47.781267545347184</ows:UpperCorner>
+      </ows:WGS84BoundingBox>
+      <wcs:CoverageId>Exposition</wcs:CoverageId>
+      <wcs:CoverageSubtype>RectifiedGridCoverage</wcs:CoverageSubtype>
+    </wcs:CoverageSummary>
+    <wcs:CoverageSummary>
+      <ows:WGS84BoundingBox>
+        <ows:LowerCorner>10.0838993506638221 46.7505830800793305</ows:LowerCorner>
+        <ows:UpperCorner>11.7964243077273121 47.6142537441570326</ows:UpperCorner>
+      </ows:WGS84BoundingBox>
+      <wcs:CoverageId>Gelaendemodell_50cm_M28</wcs:CoverageId>
+      <wcs:CoverageSubtype>RectifiedGridCoverage</wcs:CoverageSubtype>
+    </wcs:CoverageSummary>
+    <wcs:CoverageSummary>
+      <ows:WGS84BoundingBox>
+        <ows:LowerCorner>10.0857572818873393 46.7507134890131795</ows:LowerCorner>
+        <ows:UpperCorner>11.7961756960549593 47.6053349839001783</ows:UpperCorner>
+      </ows:WGS84BoundingBox>
+      <wcs:CoverageId>Oberflaechenmodell_50cm_M28</wcs:CoverageId>
+      <wcs:CoverageSubtype>RectifiedGridCoverage</wcs:CoverageSubtype>
+    </wcs:CoverageSummary>
+    <wcs:CoverageSummary>
+      <ows:WGS84BoundingBox>
+        <ows:LowerCorner>11.7328911554485504 46.6319491232521983</ows:LowerCorner>
+        <ows:UpperCorner>12.9741084986720949 47.7575890100475036</ows:UpperCorner>
+      </ows:WGS84BoundingBox>
+      <wcs:CoverageId>Gelaendemodell_50cm_M31</wcs:CoverageId>
+      <wcs:CoverageSubtype>RectifiedGridCoverage</wcs:CoverageSubtype>
+    </wcs:CoverageSummary>
+    <wcs:CoverageSummary>
+      <ows:WGS84BoundingBox>
+        <ows:LowerCorner>11.7328911554485504 46.6319491232521983</ows:LowerCorner>
+        <ows:UpperCorner>12.9741084986720949 47.7575890100475036</ows:UpperCorner>
+      </ows:WGS84BoundingBox>
+      <wcs:CoverageId>Oberflaechenmodell_50cm_M31</wcs:CoverageId>
+      <wcs:CoverageSubtype>RectifiedGridCoverage</wcs:CoverageSubtype>
+    </wcs:CoverageSummary>
+    <wcs:CoverageSummary>
+      <ows:WGS84BoundingBox>
+        <ows:LowerCorner>10.0831048878273997 46.6194479114706368</ows:LowerCorner>
+        <ows:UpperCorner>13.0296728750114035 47.7812604087838935</ows:UpperCorner>
+      </ows:WGS84BoundingBox>
+      <wcs:CoverageId>Schummerung_Gelaendemodell</wcs:CoverageId>
+      <wcs:CoverageSubtype>RectifiedGridCoverage</wcs:CoverageSubtype>
+    </wcs:CoverageSummary>
+    <wcs:CoverageSummary>
+      <ows:WGS84BoundingBox>
+        <ows:LowerCorner>10.0831048878273997 46.6194479114706368</ows:LowerCorner>
+        <ows:UpperCorner>13.0296728750114035 47.7812604087838935</ows:UpperCorner>
+      </ows:WGS84BoundingBox>
+      <wcs:CoverageId>Schummerung_Oberflaechenmodell</wcs:CoverageId>
+      <wcs:CoverageSubtype>RectifiedGridCoverage</wcs:CoverageSubtype>
+    </wcs:CoverageSummary>
+    <wcs:CoverageSummary>
+      <ows:WGS84BoundingBox>
+        <ows:LowerCorner>10.084916512990878 46.6194456756581133</ows:LowerCorner>
+        <ows:UpperCorner>13.0296763262520177 47.7812627417858522</ows:UpperCorner>
+      </ows:WGS84BoundingBox>
+      <wcs:CoverageId>Schummerung_multidirektional_Gelaendemodell</wcs:CoverageId>
+      <wcs:CoverageSubtype>RectifiedGridCoverage</wcs:CoverageSubtype>
+    </wcs:CoverageSummary>
+    <wcs:CoverageSummary>
+      <ows:WGS84BoundingBox>
+        <ows:LowerCorner>10.084916512990878 46.6194456756581133</ows:LowerCorner>
+        <ows:UpperCorner>13.0296763262520177 47.7812627417858522</ows:UpperCorner>
+      </ows:WGS84BoundingBox>
+      <wcs:CoverageId>Schummerung_multidirektional_Oberflaechenmodell</wcs:CoverageId>
+      <wcs:CoverageSubtype>RectifiedGridCoverage</wcs:CoverageSubtype>
+    </wcs:CoverageSummary>
+  </wcs:Contents>
+</wcs:Capabilities>

@@ -1,5 +1,13 @@
 import { assert } from "console";
 import * as path from "path";
+import {
+  DEFAULT_NODATA_VALUE,
+  DEFAULT_TILE_SIZE,
+  DEFAULT_WCS_AXIS_ORDER,
+  DEFAULT_WCS_CRS,
+  DEFAULT_WCS_FORMAT,
+  DEFAULT_WCS_VERSION,
+} from "./transforms/WCSTerrainTiles";
 
 export type GeocodingServerType = "photon" | "geocode-api";
 
@@ -19,13 +27,23 @@ export type SnowCoverConfig = {
 export type ElevationServerType =
   | "racemap"
   | "tileserver-gl"
-  | "aws-terrain-tiles";
+  | "aws-terrain-tiles"
+  | "wcs";
 
 export type ElevationServerConfig = {
   url: string;
   type: ElevationServerType;
   zoom?: number[]; // Optional zoom levels for tileserver-gl - will be tried in order
   interpolate: boolean; // Use bilinear interpolation (true) or raw raster cell value (false)
+
+  // WCS-specific configuration (used when type === "wcs")
+  coverageId?: string;
+  wcsVersion?: string;
+  wcsFormat?: string;
+  wcsCrs?: string;
+  wcsAxisOrder?: "lonlat" | "latlon";
+  wcsTileSize?: number;
+  wcsNoDataValue?: number;
 };
 
 export type TilesConfig = { mbTilesPath: string; tilesDir: string };
@@ -95,19 +113,36 @@ export function configFromEnvironment(): Config {
   const elevationServerURL = process.env["ELEVATION_SERVER_URL"] || null;
   const outputDir = process.env["OUTPUT_DIR"] ?? "data";
 
+  const elevationServerType =
+    (process.env["ELEVATION_SERVER_TYPE"] as ElevationServerType) ?? "racemap";
+
   return {
     elevationServer: elevationServerURL
       ? {
           url: elevationServerURL,
-          type:
-            (process.env["ELEVATION_SERVER_TYPE"] as ElevationServerType) ??
-            "racemap",
+          type: elevationServerType,
           zoom: process.env["ELEVATION_SERVER_ZOOM"]
             ? process.env["ELEVATION_SERVER_ZOOM"]
                 .split(",")
                 .map((z) => parseInt(z.trim()))
             : undefined,
           interpolate: process.env["INTERPOLATE_HEIGHT_INFORMATION"] !== "false",
+
+          // WCS-specific (only used when ELEVATION_SERVER_TYPE=wcs)
+          coverageId: process.env["ELEVATION_WCS_COVERAGE_ID"],
+          wcsVersion: process.env["ELEVATION_WCS_VERSION"] ?? DEFAULT_WCS_VERSION,
+          wcsFormat: process.env["ELEVATION_WCS_FORMAT"] ?? DEFAULT_WCS_FORMAT,
+          wcsCrs: process.env["ELEVATION_WCS_CRS"] ?? DEFAULT_WCS_CRS,
+          wcsAxisOrder: (process.env["ELEVATION_WCS_AXIS_ORDER"] as
+            | "lonlat"
+            | "latlon"
+            | undefined) ?? DEFAULT_WCS_AXIS_ORDER,
+          wcsTileSize: process.env["ELEVATION_WCS_TILE_SIZE"]
+            ? parseInt(process.env["ELEVATION_WCS_TILE_SIZE"])
+            : DEFAULT_TILE_SIZE,
+          wcsNoDataValue: process.env["ELEVATION_WCS_NODATA_VALUE"]
+            ? parseFloat(process.env["ELEVATION_WCS_NODATA_VALUE"])
+            : DEFAULT_NODATA_VALUE,
         }
       : null,
     geocodingServer:
@@ -134,7 +169,7 @@ export function configFromEnvironment(): Config {
           }
         : null,
     tiles:
-      process.env.GENERATE_TILES === "1"
+      process.env.GENERATE_MBTILES === "1"
         ? {
             mbTilesPath: path.join(outputDir, "openskimap.mbtiles"),
             tilesDir: path.join(outputDir, "openskimap"),
