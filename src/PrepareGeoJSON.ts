@@ -1,6 +1,6 @@
-import { createWriteStream, existsSync, unlinkSync } from "fs";
+import { createWriteStream, existsSync, renameSync, unlinkSync } from "fs";
 import merge from "merge2";
-import { FeatureType } from "openskidata-format";
+import { FeatureType, SkiAreaFeature } from "openskidata-format";
 import * as path from "path";
 import { join } from "path";
 import { Readable } from "stream";
@@ -18,6 +18,7 @@ import { formatLift } from "./transforms/LiftFormatter";
 import * as MapboxGLFormatter from "./transforms/MapboxGLFormatter";
 import { formatRun } from "./transforms/RunFormatter";
 import { InputSkiAreaType, formatSkiArea } from "./transforms/SkiAreaFormatter";
+import { generate3DTiles } from "./transforms/Tiles3DGenerator";
 import { generateTiles } from "./transforms/TilesGenerator";
 import { runCommand } from "./utils/ProcessRunner";
 
@@ -98,34 +99,36 @@ export default async function prepare(paths: DataPaths, config: Config) {
     "Phase 2: GeoJSON Preparation",
     async () => {
       const siteProvider = new SkiAreaSiteProvider();
-      await performanceMonitor.withOperation(
-        "Processing ski areas",
-        async () => {
-          siteProvider.loadSites(paths.input.osmJSON.skiAreaSites);
 
-          await StreamToPromise(
-            merge([
-              readGeoJSONFeatures(paths.input.geoJSON.skiAreas).pipe(
-                flatMap(formatSkiArea(InputSkiAreaType.OPENSTREETMAP_LANDUSE)),
-              ),
-              Readable.from(siteProvider.getGeoJSONSites()),
-              readGeoJSONFeatures(paths.input.geoJSON.skiMapSkiAreas).pipe(
-                flatMap(formatSkiArea(InputSkiAreaType.SKIMAP_ORG)),
-              ),
-            ])
-              .pipe(toFeatureCollection())
-              .pipe(createWriteStream(paths.intermediate.skiAreas)),
-          );
-        },
-      );
-
-      // Create shared elevation processor for both runs and lifts
+      // Create shared elevation processor for ski areas, runs, and lifts
       const elevationTransform = await createElevationTransform(
         config.elevationServer,
         config.postgresCache,
       );
 
       try {
+        await performanceMonitor.withOperation(
+          "Processing ski areas",
+          async () => {
+            siteProvider.loadSites(paths.input.osmJSON.skiAreaSites);
+
+            await StreamToPromise(
+              merge([
+                readGeoJSONFeatures(paths.input.geoJSON.skiAreas).pipe(
+                  flatMap(formatSkiArea(InputSkiAreaType.OPENSTREETMAP_LANDUSE)),
+                ),
+                Readable.from(siteProvider.getGeoJSONSites()),
+                readGeoJSONFeatures(paths.input.geoJSON.skiMapSkiAreas).pipe(
+                  flatMap(formatSkiArea(InputSkiAreaType.SKIMAP_ORG)),
+                ),
+              ])
+                .pipe(mapAsync(elevationTransform?.transform || null, 10))
+                .pipe(toFeatureCollection())
+                .pipe(createWriteStream(paths.intermediate.skiAreas)),
+            );
+          },
+        );
+
         await performanceMonitor.withOperation("Processing runs", async () => {
           await StreamToPromise(
             readGeoJSONFeatures(paths.input.geoJSON.runs)
@@ -162,6 +165,46 @@ export default async function prepare(paths: DataPaths, config: Config) {
   await performanceMonitor.withPhase("Phase 3: Clustering", async () => {
     await clusterSkiAreas(paths.intermediate, paths.output, config);
   });
+
+  if (config.elevationServer) {
+    await performanceMonitor.withOperation(
+      "Re-applying elevation to ski area points",
+      async () => {
+        const elevationServerConfig = config.elevationServer;
+        if (!elevationServerConfig) {
+          return;
+        }
+        const processor = await createElevationProcessor(
+          elevationServerConfig,
+          config.postgresCache,
+          { clearCache: false },
+        );
+        try {
+          const tempPath = `${paths.output.skiAreas}.tmp`;
+          await StreamToPromise(
+            readGeoJSONFeatures(paths.output.skiAreas)
+              .pipe(
+                mapAsync(async (feature) => {
+                  const skiArea = feature as SkiAreaFeature;
+                  if (
+                    skiArea.geometry.type !== "Point" &&
+                    skiArea.geometry.type !== "MultiPolygon"
+                  ) {
+                    return skiArea;
+                  }
+                  return await processor.processFeature(skiArea);
+                }, 10),
+              )
+              .pipe(toFeatureCollection())
+              .pipe(createWriteStream(tempPath)),
+          );
+          renameSync(tempPath, paths.output.skiAreas);
+        } finally {
+          await processor.close();
+        }
+      },
+    );
+  }
 
   await performanceMonitor.withPhase("Phase 4: Output Generation", async () => {
     await performanceMonitor.withOperation(
@@ -284,6 +327,17 @@ export default async function prepare(paths: DataPaths, config: Config) {
           console.log(`Exported ${liftFeatures.length} lifts to PostGIS`);
         },
       );
+
+      // Generate 3D Tiles if enabled (requires PostGIS export)
+      const tiles3DConfig = config.tiles3D;
+      if (tiles3DConfig) {
+        await performanceMonitor.withOperation(
+          "Generating 3D Tiles",
+          async () => {
+            await generate3DTiles(config.postgresCache, tiles3DConfig);
+          },
+        );
+      }
     }
   });
 

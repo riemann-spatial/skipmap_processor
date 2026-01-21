@@ -349,7 +349,12 @@ export async function fetchElevationsFromAWSTerrainTiles(
   }));
 
   // Batch coordinates by tile
-  const batches = batchCoordinatesByTile(coordinates, baseUrl, zoom, interpolate);
+  const batches = batchCoordinatesByTile(
+    coordinates,
+    baseUrl,
+    zoom,
+    interpolate,
+  );
 
   // Fetch all tiles in parallel with concurrency limit
   const CONCURRENCY_LIMIT = 10;

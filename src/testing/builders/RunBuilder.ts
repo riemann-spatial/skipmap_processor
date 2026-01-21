@@ -15,11 +15,7 @@ import {
   Status,
 } from "openskidata-format";
 import { v4 as uuid } from "uuid";
-import {
-  DraftRun,
-  MapObjectType,
-  RunObject,
-} from "../../clustering/MapObject";
+import { DraftRun, MapObjectType, RunObject } from "../../clustering/MapObject";
 
 /**
  * Builder for creating RunFeature test objects with fluent API
@@ -29,7 +25,8 @@ export class RunBuilder {
   private _name: string | null = "Test Run";
   private _uses: RunUse[] = [RunUse.Downhill];
   private _difficulty: RunDifficulty | null = null;
-  private _difficultyConvention: RunDifficultyConvention = RunDifficultyConvention.EUROPE;
+  private _difficultyConvention: RunDifficultyConvention =
+    RunDifficultyConvention.EUROPE;
   private _ref: string | null = null;
   private _oneway: boolean | null = null;
   private _lit: boolean | null = null;
@@ -45,7 +42,10 @@ export class RunBuilder {
   private _places: Place[] = [];
   private _geometry: RunGeometry = {
     type: "LineString",
-    coordinates: [[0, 0], [0.01, 0.01]],
+    coordinates: [
+      [0, 0],
+      [0.01, 0.01],
+    ],
   };
 
   constructor(id?: string) {
@@ -205,7 +205,10 @@ export class RunBuilder {
   fromPoint(lon: number, lat: number): RunBuilder {
     this._geometry = {
       type: "LineString",
-      coordinates: [[lon, lat], [lon + 0.01, lat + 0.01]],
+      coordinates: [
+        [lon, lat],
+        [lon + 0.01, lat + 0.01],
+      ],
     };
     return this;
   }

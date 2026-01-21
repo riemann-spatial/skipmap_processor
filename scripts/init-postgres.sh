@@ -219,7 +219,7 @@ CREATE INDEX lifts_output_name_idx ON output.lifts (name);
 CREATE TABLE output.ski_areas (
   id SERIAL PRIMARY KEY,
   feature_id TEXT UNIQUE NOT NULL,
-  geometry GEOMETRY(Geometry, 4326),
+  geometry GEOMETRY(GeometryZ, 4326),
   -- Exploded properties (same names as GeoJSON)
   type TEXT,
   name TEXT,

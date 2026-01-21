@@ -13,12 +13,7 @@ import {
 } from "openskidata-format";
 import { SnowCoverConfig } from "../../Config";
 import { VIIRSPixelExtractor } from "../../utils/VIIRSPixelExtractor";
-import {
-  DraftLift,
-  DraftRun,
-  DraftSkiArea,
-  MapObjectType,
-} from "../MapObject";
+import { DraftLift, DraftRun, DraftSkiArea, MapObjectType } from "../MapObject";
 import { allSkiAreaActivities } from "../SkiAreaClusteringService";
 
 export function prepareSkiArea(feature: SkiAreaFeature): DraftSkiArea {
@@ -184,7 +179,8 @@ export function geometryWithoutElevations(
     default: {
       const _exhaustiveCheck: never = geometry;
       throw new Error(
-        "Unsupported geometry type " + (_exhaustiveCheck as GeoJSON.Geometry).type,
+        "Unsupported geometry type " +
+          (_exhaustiveCheck as GeoJSON.Geometry).type,
       );
     }
   }

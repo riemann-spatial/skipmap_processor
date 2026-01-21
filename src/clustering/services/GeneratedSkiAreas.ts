@@ -90,7 +90,10 @@ export class GeneratedSkiAreas {
       isFixedSearchArea: false,
     };
 
-    let memberObjects = await this.assignment.visitObject(context, unassignedRun);
+    let memberObjects = await this.assignment.visitObject(
+      context,
+      unassignedRun,
+    );
 
     if (
       activities.includes(SkiAreaActivity.Downhill) &&

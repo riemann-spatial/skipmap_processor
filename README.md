@@ -161,13 +161,13 @@ ELEVATION_SERVER_URL="https://gis.tirol.gv.at/arcgis/services/Service_Public/ter
 ELEVATION_SERVER_TYPE="wcs"
 ELEVATION_SERVER_ZOOM="15"
 ELEVATION_WCS_COVERAGE_ID="Gelaendemodell_5m_M28"
-ELEVATION_WCS_VERSION="1.0.0"
-ELEVATION_WCS_FORMAT="image/tiff"
-ELEVATION_WCS_CRS="EPSG:4326"
+ELEVATION_WCS_VERSION="1.0.0"        # optional (default: 1.0.0)
+ELEVATION_WCS_FORMAT="image/tiff"    # optional (default: GeoTIFF)
+ELEVATION_WCS_CRS="EPSG:4326"        # optional (default: EPSG:4326)
 # EPSG:4326 axis order can be server-dependent; try lonlat first, then latlon if you get empty/shifted results.
-ELEVATION_WCS_AXIS_ORDER="lonlat"
-ELEVATION_WCS_TILE_SIZE="256"
-ELEVATION_WCS_NODATA_VALUE="-32768"
+ELEVATION_WCS_AXIS_ORDER="lonlat"    # optional (default: lonlat)
+ELEVATION_WCS_TILE_SIZE="256"        # optional (default: 256)
+ELEVATION_WCS_NODATA_VALUE="-32768"  # optional (default: -32768)
 ```
 
 ### Reverse geocoding
@@ -220,7 +220,7 @@ Riggs, G. A. & Hall, D. K. (2023). VIIRS/NPP Snow Cover Daily L3 Global 375m SIN
 
 ### Mapbox Vector Tiles
 
-Pass `GENERATE_MBILES=1` to enable generation of Mapbox Vector Tiles (MVT) output. This will output an `.mbtiles` file in the output directory.
+Pass `GENERATE_MBTILES=1` to enable generation of Mapbox Vector Tiles (MVT) output. This will output an `.mbtiles` file in the output directory.
 
 ## Issue reporting
 

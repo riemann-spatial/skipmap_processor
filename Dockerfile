@@ -36,7 +36,18 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     sqlite3 \
     postgresql-15 \
     postgresql-15-postgis-3 \
-    postgresql-client-15
+    postgresql-client-15 \
+    curl \
+    unzip
+
+# Install pg2b3dm for 3D Tiles generation
+ENV PG2B3DM_VERSION=2.25.1
+RUN curl -L -o /tmp/pg2b3dm.zip \
+    "https://github.com/Geodan/pg2b3dm/releases/download/v${PG2B3DM_VERSION}/pg2b3dm-linux-x64.zip" && \
+    unzip /tmp/pg2b3dm.zip -d /tmp/pg2b3dm && \
+    mv /tmp/pg2b3dm/pg2b3dm /usr/local/bin/pg2b3dm && \
+    chmod +x /usr/local/bin/pg2b3dm && \
+    rm -rf /tmp/pg2b3dm.zip /tmp/pg2b3dm
 
 # Set working directory
 WORKDIR /app

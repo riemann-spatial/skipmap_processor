@@ -44,7 +44,10 @@ export class LiftBuilder {
   private places: Place[] = [];
   private geometry: LiftGeometry = {
     type: "LineString",
-    coordinates: [[0, 0], [0.01, 0.01]],
+    coordinates: [
+      [0, 0],
+      [0.01, 0.01],
+    ],
   };
 
   constructor(id?: string) {
@@ -189,7 +192,10 @@ export class LiftBuilder {
   fromPoint(lon: number, lat: number): LiftBuilder {
     this.geometry = {
       type: "LineString",
-      coordinates: [[lon, lat], [lon + 0.01, lat + 0.01]],
+      coordinates: [
+        [lon, lat],
+        [lon + 0.01, lat + 0.01],
+      ],
     };
     return this;
   }

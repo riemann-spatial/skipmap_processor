@@ -48,6 +48,8 @@ export type ElevationServerConfig = {
 
 export type TilesConfig = { mbTilesPath: string; tilesDir: string };
 
+export type Tiles3DConfig = { outputDir: string };
+
 export type PostgresConfig = {
   host: string;
   port: number;
@@ -80,6 +82,8 @@ export interface Config {
   snowCover: SnowCoverConfig | null;
   // Tiles generation configuration
   tiles: TilesConfig | null;
+  // 3D Tiles generation configuration
+  tiles3D: Tiles3DConfig | null;
   // PostgreSQL cache configuration
   postgresCache: PostgresConfig;
   // Output configuration
@@ -126,17 +130,20 @@ export function configFromEnvironment(): Config {
                 .split(",")
                 .map((z) => parseInt(z.trim()))
             : undefined,
-          interpolate: process.env["INTERPOLATE_HEIGHT_INFORMATION"] !== "false",
+          interpolate:
+            process.env["INTERPOLATE_HEIGHT_INFORMATION"] !== "false",
 
           // WCS-specific (only used when ELEVATION_SERVER_TYPE=wcs)
           coverageId: process.env["ELEVATION_WCS_COVERAGE_ID"],
-          wcsVersion: process.env["ELEVATION_WCS_VERSION"] ?? DEFAULT_WCS_VERSION,
+          wcsVersion:
+            process.env["ELEVATION_WCS_VERSION"] ?? DEFAULT_WCS_VERSION,
           wcsFormat: process.env["ELEVATION_WCS_FORMAT"] ?? DEFAULT_WCS_FORMAT,
           wcsCrs: process.env["ELEVATION_WCS_CRS"] ?? DEFAULT_WCS_CRS,
-          wcsAxisOrder: (process.env["ELEVATION_WCS_AXIS_ORDER"] as
-            | "lonlat"
-            | "latlon"
-            | undefined) ?? DEFAULT_WCS_AXIS_ORDER,
+          wcsAxisOrder:
+            (process.env["ELEVATION_WCS_AXIS_ORDER"] as
+              | "lonlat"
+              | "latlon"
+              | undefined) ?? DEFAULT_WCS_AXIS_ORDER,
           wcsTileSize: process.env["ELEVATION_WCS_TILE_SIZE"]
             ? parseInt(process.env["ELEVATION_WCS_TILE_SIZE"])
             : DEFAULT_TILE_SIZE,
@@ -173,6 +180,12 @@ export function configFromEnvironment(): Config {
         ? {
             mbTilesPath: path.join(outputDir, "openskimap.mbtiles"),
             tilesDir: path.join(outputDir, "openskimap"),
+          }
+        : null,
+    tiles3D:
+      process.env.GENERATE_3D_TILES === "1"
+        ? {
+            outputDir: path.join(outputDir, "3dtiles"),
           }
         : null,
     postgresCache: getPostgresConfig(),

@@ -3,6 +3,7 @@ import { spawn } from "child_process";
 export interface RunCommandOptions {
   stdio?: "inherit" | "pipe" | "ignore";
   cwd?: string;
+  env?: NodeJS.ProcessEnv;
 }
 
 export async function runCommand(
@@ -16,6 +17,7 @@ export async function runCommand(
     const process = spawn(command, args, {
       stdio: options.stdio || "inherit",
       cwd: options.cwd,
+      env: options.env,
     });
 
     process.on("close", (code) => {

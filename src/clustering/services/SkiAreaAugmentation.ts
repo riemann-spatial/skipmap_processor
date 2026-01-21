@@ -1,6 +1,14 @@
 import centroid from "@turf/centroid";
-import { FeatureType, getRunDifficultyConvention, SourceType } from "openskidata-format";
-import { GeocodingServerConfig, PostgresConfig, SnowCoverConfig } from "../../Config";
+import {
+  FeatureType,
+  getRunDifficultyConvention,
+  SourceType,
+} from "openskidata-format";
+import {
+  GeocodingServerConfig,
+  PostgresConfig,
+  SnowCoverConfig,
+} from "../../Config";
 import { skiAreaStatistics } from "../../statistics/SkiAreaStatistics";
 import Geocoder from "../../transforms/Geocoder";
 import { sortPlaces, uniquePlaces } from "../../transforms/PlaceUtils";
@@ -8,12 +16,7 @@ import { isPlaceholderGeometry } from "../../utils/PlaceholderSiteGeometry";
 import { ClusteringDatabase } from "../database/ClusteringDatabase";
 import { performanceMonitor } from "../database/PerformanceMonitor";
 import augmentGeoJSONFeatures from "../GeoJSONAugmenter";
-import {
-  LiftObject,
-  MapObject,
-  RunObject,
-  SkiAreaObject,
-} from "../MapObject";
+import { LiftObject, MapObject, RunObject, SkiAreaObject } from "../MapObject";
 import exportSkiAreasGeoJSON from "../SkiAreasExporter";
 
 export class SkiAreaAugmentation {

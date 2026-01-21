@@ -170,7 +170,10 @@ export class SkiAreaClusteringService {
     await performanceMonitor.withOperation(
       "Geocode runs and lifts",
       async () => {
-        await this.augmentation.geocodeRunsAndLifts(geocoderConfig, postgresConfig);
+        await this.augmentation.geocodeRunsAndLifts(
+          geocoderConfig,
+          postgresConfig,
+        );
       },
     );
 

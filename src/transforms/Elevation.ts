@@ -1,22 +1,23 @@
 import DataLoader from "dataloader";
 import * as geohash from "ngeohash";
 import {
-    extractPointsForElevationProfile,
-    FeatureType,
-    LiftFeature,
-    RunFeature,
+  extractPointsForElevationProfile,
+  FeatureType,
+  LiftFeature,
+  RunFeature,
+  SkiAreaFeature,
 } from "openskidata-format";
 import { ElevationServerConfig, PostgresConfig } from "../Config";
 import { GeometryError } from "../errors";
 import { PostgresCache } from "../utils/PostgresCache";
 import {
-    DEFAULT_AWS_TERRAIN_ZOOM,
-    fetchElevationsFromAWSTerrainTiles,
+  DEFAULT_AWS_TERRAIN_ZOOM,
+  fetchElevationsFromAWSTerrainTiles,
 } from "./AWSTerrainTiles";
 import {
-    DEFAULT_TILE_SIZE,
-    DEFAULT_WCS_ZOOM,
-    fetchElevationsFromWCSTerrainTiles,
+  DEFAULT_TILE_SIZE,
+  DEFAULT_WCS_ZOOM,
+  fetchElevationsFromWCSTerrainTiles,
 } from "./WCSTerrainTiles";
 
 const DEFAULT_ELEVATION_PROFILE_RESOLUTION = 25;
@@ -98,7 +99,8 @@ function resolveElevationProfileResolution(
       );
     }
     case "tileserver-gl": {
-      const zoom = elevationServerConfig.zoom?.[0] ?? DEFAULT_TILESERVER_ZOOM[0];
+      const zoom =
+        elevationServerConfig.zoom?.[0] ?? DEFAULT_TILESERVER_ZOOM[0];
       const metersPerPixel = metersPerPixelForZoom(zoom, avgLat);
       return clampValue(
         Math.round(metersPerPixel),
@@ -111,10 +113,10 @@ function resolveElevationProfileResolution(
   }
 }
 
+export type ElevationFeature = RunFeature | LiftFeature | SkiAreaFeature;
+
 export interface ElevationProcessor {
-  processFeature: (
-    feature: RunFeature | LiftFeature,
-  ) => Promise<RunFeature | LiftFeature>;
+  processFeature: (feature: ElevationFeature) => Promise<ElevationFeature>;
   close: () => Promise<void>;
 }
 
@@ -169,8 +171,8 @@ export async function createElevationProcessor(
   );
 
   const processFeature = async (
-    feature: RunFeature | LiftFeature,
-  ): Promise<RunFeature | LiftFeature> => {
+    feature: ElevationFeature,
+  ): Promise<ElevationFeature> => {
     const coordinates: number[][] = getCoordinates(feature);
     const geometry = feature.geometry;
     const elevationProfileResolution = resolveElevationProfileResolution(
@@ -522,10 +524,13 @@ async function fetchElevationsFromTileserverGL(
   return results;
 }
 
-function getCoordinates(feature: RunFeature | LiftFeature) {
+function getCoordinates(feature: ElevationFeature) {
   let coordinates: number[][];
   const geometryType = feature.geometry.type;
   switch (geometryType) {
+    case "Point":
+      coordinates = [feature.geometry.coordinates];
+      break;
     case "LineString":
       coordinates = feature.geometry.coordinates;
       break;
@@ -534,6 +539,9 @@ function getCoordinates(feature: RunFeature | LiftFeature) {
       break;
     case "Polygon":
       coordinates = feature.geometry.coordinates.flat();
+      break;
+    case "MultiPolygon":
+      coordinates = feature.geometry.coordinates.flat(2);
       break;
     default:
       const exhaustiveCheck: never = geometryType;
@@ -548,12 +556,15 @@ function getCoordinates(feature: RunFeature | LiftFeature) {
 }
 
 function addElevations(
-  feature: RunFeature | LiftFeature,
+  feature: ElevationFeature,
   elevations: (number | null)[],
 ) {
   let i = 0;
   const geometryType = feature.geometry.type;
   switch (geometryType) {
+    case "Point":
+      addElevationToCoords(feature.geometry.coordinates, elevations[i]);
+      return;
     case "LineString":
       return feature.geometry.coordinates.forEach((coords) => {
         addElevationToCoords(coords, elevations[i]);
@@ -571,6 +582,15 @@ function addElevations(
         coordsSet.forEach((coords) => {
           addElevationToCoords(coords, elevations[i]);
           i++;
+        });
+      });
+    case "MultiPolygon":
+      return feature.geometry.coordinates.forEach((polygon) => {
+        polygon.forEach((ring) => {
+          ring.forEach((coords) => {
+            addElevationToCoords(coords, elevations[i]);
+            i++;
+          });
         });
       });
     default:

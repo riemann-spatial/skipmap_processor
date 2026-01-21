@@ -28,7 +28,8 @@ export class SkiAreaBuilder {
   private status: Status = Status.Operating;
   private sources: Source[] = [];
   private geometry: SkiAreaGeometry = { type: "Point", coordinates: [0, 0] };
-  private runConvention: RunDifficultyConvention = RunDifficultyConvention.EUROPE;
+  private runConvention: RunDifficultyConvention =
+    RunDifficultyConvention.EUROPE;
   private statistics?: SkiAreaStatistics;
   private websites: string[] = [];
   private wikidataID: string | null = null;

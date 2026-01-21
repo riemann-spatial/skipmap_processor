@@ -585,10 +585,9 @@ export class PostgreSQLClusteringDatabase implements ClusteringDatabase {
     this.ensureInitialized();
 
     try {
-      const rows = await this.executeQuery<Array<{ geometry: GeoJSON.Geometry }>>(
-        SQL.DERIVED_GEOMETRY,
-        [JSON.stringify([skiAreaId]), skiAreaId],
-      );
+      const rows = await this.executeQuery<
+        Array<{ geometry: GeoJSON.Geometry }>
+      >(SQL.DERIVED_GEOMETRY, [JSON.stringify([skiAreaId]), skiAreaId]);
 
       if (rows.length === 0 || !rows[0].geometry) {
         throw new Error(`No geometry found for ski area ${skiAreaId}`);
@@ -603,10 +602,9 @@ export class PostgreSQLClusteringDatabase implements ClusteringDatabase {
 
       const fallbackQuery =
         "SELECT geometry FROM objects WHERE key = $1 AND type = 'SKI_AREA'";
-      const rows = await this.executeQuery<Array<{ geometry: GeoJSON.Geometry }>>(
-        fallbackQuery,
-        [skiAreaId],
-      );
+      const rows = await this.executeQuery<
+        Array<{ geometry: GeoJSON.Geometry }>
+      >(fallbackQuery, [skiAreaId]);
 
       if (rows.length === 0) {
         throw new Error(`Ski area ${skiAreaId} not found`);

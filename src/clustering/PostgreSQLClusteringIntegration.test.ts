@@ -106,6 +106,7 @@ it("correctly associates lifts and runs with ski areas", async () => {
     geocodingServer: null,
     snowCover: null,
     tiles: null,
+    tiles3D: null,
     postgresCache: getPostgresTestConfig(),
     output: { toFiles: true, toPostgis: false },
   };
@@ -211,6 +212,7 @@ it("verifies ski area associations persist through clustering and augmentation",
     geocodingServer: null,
     snowCover: null,
     tiles: null,
+    tiles3D: null,
     postgresCache: getPostgresTestConfig(),
     output: { toFiles: true, toPostgis: false },
   };

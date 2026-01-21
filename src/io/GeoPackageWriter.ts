@@ -397,6 +397,9 @@ export class GeoPackageWriter {
     // Special handling for ski areas - create point layer with centroids
     if (featureType === FeatureType.SkiArea) {
       const pointFeatures = features.map((feature) => {
+        if (feature.geometry.type === "Point") {
+          return feature;
+        }
         // Use turf centroid to get the center point of any geometry
         const centerPoint = centroid(feature);
         return {
@@ -510,13 +513,18 @@ export class GeoPackageWriter {
     });
     const boundingBox = new BoundingBox(minX, minY, maxX, maxY);
 
+    const hasZ = features.some((feature) => {
+      const coords = this.extractCoordinates(feature.geometry);
+      return coords.some((coord) => coord.length >= 3 && Number.isFinite(coord[2]));
+    });
+
     // Create geometry columns
     const geometryColumns = new GeometryColumns();
     geometryColumns.table_name = tableName;
     geometryColumns.column_name = "geometry";
     geometryColumns.geometry_type_name = this.getGeometryTypeName(features[0]);
     geometryColumns.srs_id = 4326; // WGS84
-    geometryColumns.z = 0;
+    geometryColumns.z = hasZ ? 1 : 0;
     geometryColumns.m = 0;
 
     // Create the feature table if it doesn't exist

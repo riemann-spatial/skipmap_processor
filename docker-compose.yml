@@ -39,6 +39,7 @@ services:
       - ELEVATION_WCS_COVERAGE_ID=Gelaendemodell_50cm_M28 # Gelaendemodell_5m_M28
 
       - GENERATE_MBTILES=1 # results in mbtiles files for runs, lifts and ski areas, as well as a combined mbtiles file
+      - GENERATE_3D_TILES=1 # Generate 3D Tiles tilesets (requires OUTPUT_TO_POSTGIS=1)
       # Set to true to use bilinear interpolation for elevation values, false for raw raster cell values
       - INTERPOLATE_HEIGHT_INFORMATION=true
       # Set to false to only start PostgreSQL without running the processing pipeline

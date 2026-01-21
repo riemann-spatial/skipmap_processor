@@ -225,10 +225,10 @@ export class GeoPackageMerger {
     `);
 
     for (let offset = 0; offset < totalRows.count; offset += this.BATCH_SIZE) {
-      const batch = sourceStmt.all(
-        this.BATCH_SIZE,
-        offset,
-      ) as Record<string, unknown>[];
+      const batch = sourceStmt.all(this.BATCH_SIZE, offset) as Record<
+        string,
+        unknown
+      >[];
       insertMany(batch);
     }
 
@@ -303,10 +303,10 @@ export class GeoPackageMerger {
     `);
 
     for (let offset = 0; offset < totalRows.count; offset += this.BATCH_SIZE) {
-      const batch = sourceStmt.all(
-        this.BATCH_SIZE,
-        offset,
-      ) as Record<string, unknown>[];
+      const batch = sourceStmt.all(this.BATCH_SIZE, offset) as Record<
+        string,
+        unknown
+      >[];
       insertMany(batch);
     }
 

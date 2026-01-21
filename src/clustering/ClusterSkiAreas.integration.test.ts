@@ -41,6 +41,7 @@ beforeEach(async () => {
     geocodingServer: null,
     snowCover: null,
     tiles: null,
+    tiles3D: null,
     postgresCache: getPostgresTestConfig(),
     output: { toFiles: true, toPostgis: false },
   };

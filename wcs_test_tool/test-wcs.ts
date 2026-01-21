@@ -110,7 +110,10 @@ function getMGIZoneSuffix(lng: number): string {
   }
 }
 
-function getCoverageIdForCoordinate(baseCoverageId: string, lng: number): string {
+function getCoverageIdForCoordinate(
+  baseCoverageId: string,
+  lng: number,
+): string {
   if (baseCoverageId.endsWith("_")) {
     return baseCoverageId + getMGIZoneSuffix(lng);
   }
@@ -124,13 +127,13 @@ function getCoverageIdForCoordinate(baseCoverageId: string, lng: number): string
 function latLngToTileXY(
   lat: number,
   lng: number,
-  zoom: number
+  zoom: number,
 ): { tileX: number; tileY: number } {
   const n = Math.pow(2, zoom);
   const tileX = Math.floor(((lng + 180) / 360) * n);
   const latRad = (lat * Math.PI) / 180;
   const tileY = Math.floor(
-    ((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2) * n
+    ((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2) * n,
   );
 
   return {
@@ -218,7 +221,7 @@ function bilinearInterpolate(
   height: number,
   pixelX: number,
   pixelY: number,
-  nodataValue: number
+  nodataValue: number,
 ): number | null {
   const x0 = Math.floor(pixelX);
   const y0 = Math.floor(pixelY);
@@ -255,7 +258,7 @@ function extractRawCellValue(
   width: number,
   pixelX: number,
   pixelY: number,
-  nodataValue: number
+  nodataValue: number,
 ): number | null {
   const x = Math.floor(pixelX);
   const y = Math.floor(pixelY);
@@ -263,11 +266,7 @@ function extractRawCellValue(
   return isValidElevation(elevation, nodataValue) ? elevation : null;
 }
 
-function createWCSBatch(
-  lat: number,
-  lng: number,
-  config: WCSConfig
-): WCSBatch {
+function createWCSBatch(lat: number, lng: number, config: WCSConfig): WCSBatch {
   const { tileX, tileY } = latLngToTileXY(lat, lng, config.zoom);
   const bbox = tileBoundsLonLat(config.zoom, tileX, tileY);
 
@@ -292,11 +291,11 @@ function createWCSBatch(
   const yFrac = (bbox.maxLat - lat) / (bbox.maxLat - bbox.minLat);
   const pixelX = Math.max(
     0,
-    Math.min(config.tileSize - 1.001, xFrac * (config.tileSize - 1))
+    Math.min(config.tileSize - 1.001, xFrac * (config.tileSize - 1)),
   );
   const pixelY = Math.max(
     0,
-    Math.min(config.tileSize - 1.001, yFrac * (config.tileSize - 1))
+    Math.min(config.tileSize - 1.001, yFrac * (config.tileSize - 1)),
   );
 
   return {
@@ -321,7 +320,7 @@ function createWCSBatch(
 
 async function fetchAndAnalyzeWCSTile(
   batch: WCSBatch,
-  config: WCSConfig
+  config: WCSConfig,
 ): Promise<void> {
   console.log("\n" + "=".repeat(70));
   console.log("WCS ELEVATION FETCH TEST");
@@ -335,7 +334,9 @@ async function fetchAndAnalyzeWCSTile(
   console.log(`  minLat: ${batch.bbox.minLat}`);
   console.log(`  maxLon: ${batch.bbox.maxLon}`);
   console.log(`  maxLat: ${batch.bbox.maxLat}`);
-  console.log(`\nPixel coordinates: x=${coord.pixelX.toFixed(3)}, y=${coord.pixelY.toFixed(3)}`);
+  console.log(
+    `\nPixel coordinates: x=${coord.pixelX.toFixed(3)}, y=${coord.pixelY.toFixed(3)}`,
+  );
   console.log(`\nWCS URL:\n${batch.url}`);
 
   console.log("\n" + "-".repeat(70));
@@ -353,7 +354,9 @@ async function fetchAndAnalyzeWCSTile(
     console.log(`Fetch completed in ${fetchTime}ms`);
     console.log(`HTTP Status: ${response.status} ${response.statusText}`);
     console.log(`Content-Type: ${response.headers.get("content-type")}`);
-    console.log(`Content-Length: ${response.headers.get("content-length")} bytes`);
+    console.log(
+      `Content-Length: ${response.headers.get("content-length")} bytes`,
+    );
 
     if (!response.ok) {
       console.error(`\nERROR: HTTP ${response.status}`);
@@ -414,7 +417,10 @@ async function fetchAndAnalyzeWCSTile(
     console.log("Reading raster data...");
 
     const rasters = await image.readRasters();
-    const elevationData = rasters[0] as Int16Array | Float32Array | Float64Array;
+    const elevationData = rasters[0] as
+      | Int16Array
+      | Float32Array
+      | Float64Array;
 
     console.log(`  Data type: ${elevationData.constructor.name}`);
     console.log(`  Data length: ${elevationData.length} values`);
@@ -449,7 +455,9 @@ async function fetchAndAnalyzeWCSTile(
 
     // Sample some values around the target pixel
     if (config.debug) {
-      console.log(`\nSample values around target pixel (${Math.floor(coord.pixelX)}, ${Math.floor(coord.pixelY)}):`);
+      console.log(
+        `\nSample values around target pixel (${Math.floor(coord.pixelX)}, ${Math.floor(coord.pixelY)}):`,
+      );
       const cx = Math.floor(coord.pixelX);
       const cy = Math.floor(coord.pixelY);
       for (let dy = -2; dy <= 2; dy++) {
@@ -481,7 +489,7 @@ async function fetchAndAnalyzeWCSTile(
         height,
         coord.pixelX,
         coord.pixelY,
-        batch.nodataValue
+        batch.nodataValue,
       );
     } else {
       console.log("  Method: Nearest neighbor (raw cell value)");
@@ -490,7 +498,7 @@ async function fetchAndAnalyzeWCSTile(
         width,
         coord.pixelX,
         coord.pixelY,
-        batch.nodataValue
+        batch.nodataValue,
       );
     }
 
@@ -507,7 +515,9 @@ async function fetchAndAnalyzeWCSTile(
       console.log(`  Raw pixel value: ${rawValue}`);
       console.log(`  Nodata value: ${batch.nodataValue}`);
       console.log(`  Is nodata: ${rawValue === batch.nodataValue}`);
-      console.log(`  In valid range [${MIN_VALID_ELEVATION}, ${MAX_VALID_ELEVATION}]: ${rawValue >= MIN_VALID_ELEVATION && rawValue <= MAX_VALID_ELEVATION}`);
+      console.log(
+        `  In valid range [${MIN_VALID_ELEVATION}, ${MAX_VALID_ELEVATION}]: ${rawValue >= MIN_VALID_ELEVATION && rawValue <= MAX_VALID_ELEVATION}`,
+      );
     }
     console.log("=".repeat(70) + "\n");
   } catch (error) {
@@ -600,7 +610,9 @@ Example (auto zone suffix):
       wcsCrs: getArg("--crs") || DEFAULT_WCS_CRS,
       axisOrder: (getArg("--axis-order") as AxisOrder) || "lonlat",
       tileSize: parseInt(getArg("--tile-size") || String(DEFAULT_TILE_SIZE)),
-      nodataValue: parseFloat(getArg("--nodata") || String(DEFAULT_NODATA_VALUE)),
+      nodataValue: parseFloat(
+        getArg("--nodata") || String(DEFAULT_NODATA_VALUE),
+      ),
       debug: hasFlag("--debug"),
       saveTiff: hasFlag("--save-tiff"),
     },
@@ -625,7 +637,9 @@ async function main() {
 
   console.log("Configuration:");
   console.log(`  Base URL: ${config.baseUrl}`);
-  console.log(`  Coverage ID: ${config.coverageId}${config.coverageId !== resolvedCoverage ? ` -> ${resolvedCoverage}` : ""}`);
+  console.log(
+    `  Coverage ID: ${config.coverageId}${config.coverageId !== resolvedCoverage ? ` -> ${resolvedCoverage}` : ""}`,
+  );
   console.log(`  Zoom: ${config.zoom}`);
   console.log(`  Interpolate: ${config.interpolate}`);
   console.log(`  WCS Version: ${config.wcsVersion}`);

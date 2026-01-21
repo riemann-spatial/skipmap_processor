@@ -215,7 +215,8 @@ export class SkiAreaAssignment {
 
             const hasKnownSkiAreaActivities = skiArea.activities.length > 0;
             if (!hasKnownSkiAreaActivities) {
-              const activities = getActivitiesBasedOnRunsAndLifts(memberObjects);
+              const activities =
+                getActivitiesBasedOnRunsAndLifts(memberObjects);
               await this.database.updateObject(skiArea._key, {
                 activities: [...activities],
                 properties: {

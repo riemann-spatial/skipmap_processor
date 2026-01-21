@@ -17,6 +17,7 @@ function createTestConfig(): Config {
     outputDir: TestHelpers.getTempWorkingDir(),
     snowCover: null,
     tiles: null,
+    tiles3D: null,
     postgresCache: getPostgresTestConfig(),
     output: { toFiles: true, toPostgis: false },
   };

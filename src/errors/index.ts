@@ -4,7 +4,7 @@
 export class ProcessingError extends Error {
   constructor(
     message: string,
-    public readonly cause?: unknown
+    public readonly cause?: unknown,
   ) {
     super(message);
     this.name = "ProcessingError";
@@ -17,7 +17,7 @@ export class ProcessingError extends Error {
 export class GeometryError extends ProcessingError {
   constructor(
     message: string,
-    public readonly geometryType?: string
+    public readonly geometryType?: string,
   ) {
     super(message);
     this.name = "GeometryError";
@@ -30,7 +30,7 @@ export class GeometryError extends ProcessingError {
 export class ValidationError extends ProcessingError {
   constructor(
     message: string,
-    public readonly field?: string
+    public readonly field?: string,
   ) {
     super(message);
     this.name = "ValidationError";
@@ -54,7 +54,7 @@ export class ExternalServiceError extends ProcessingError {
   constructor(
     message: string,
     public readonly service: string,
-    cause?: unknown
+    cause?: unknown,
   ) {
     super(message, cause);
     this.name = "ExternalServiceError";

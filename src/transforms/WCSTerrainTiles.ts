@@ -40,7 +40,10 @@ function getMGIZoneSuffix(lng: number): string {
  * Get the full coverage ID with zone suffix if the base ID ends with underscore.
  * E.g., "Gelaendemodell_5m_" + M28 = "Gelaendemodell_5m_M28"
  */
-function getCoverageIdForCoordinate(baseCoverageId: string, lng: number): string {
+function getCoverageIdForCoordinate(
+  baseCoverageId: string,
+  lng: number,
+): string {
   if (baseCoverageId.endsWith("_")) {
     return baseCoverageId + getMGIZoneSuffix(lng);
   }
@@ -78,13 +81,16 @@ function tileBoundsLonLat(zoom: number, x: number, y: number) {
   const lonRight = ((x + 1) / n) * 360 - 180;
 
   const latRadTop = Math.atan(Math.sinh(Math.PI * (1 - (2 * y) / n)));
-  const latRadBottom = Math.atan(
-    Math.sinh(Math.PI * (1 - (2 * (y + 1)) / n)),
-  );
+  const latRadBottom = Math.atan(Math.sinh(Math.PI * (1 - (2 * (y + 1)) / n)));
   const latTop = (latRadTop * 180) / Math.PI;
   const latBottom = (latRadBottom * 180) / Math.PI;
 
-  return { minLon: lonLeft, minLat: latBottom, maxLon: lonRight, maxLat: latTop };
+  return {
+    minLon: lonLeft,
+    minLat: latBottom,
+    maxLon: lonRight,
+    maxLat: latTop,
+  };
 }
 
 export function buildWCSGetCoverageURL(params: {
@@ -266,8 +272,14 @@ function batchCoordinatesByWCSTile(
     // X increases eastward. Y increases downward in raster space.
     const xFrac = (lng - minLon) / (maxLon - minLon);
     const yFrac = (maxLat - lat) / (maxLat - minLat);
-    const pixelX = Math.max(0, Math.min(batch.width - 1.001, xFrac * (batch.width - 1)));
-    const pixelY = Math.max(0, Math.min(batch.height - 1.001, yFrac * (batch.height - 1)));
+    const pixelX = Math.max(
+      0,
+      Math.min(batch.width - 1.001, xFrac * (batch.width - 1)),
+    );
+    const pixelY = Math.max(
+      0,
+      Math.min(batch.height - 1.001, yFrac * (batch.height - 1)),
+    );
 
     batch.coordinates.push({
       originalIndex: i,
@@ -295,17 +307,25 @@ async function fetchWCSTileAndExtractElevations(
     if (!response.ok) {
       if (response.status === 404) {
         const results = new Map<number, number | null>();
-        batch.coordinates.forEach((coord) => results.set(coord.originalIndex, null));
+        batch.coordinates.forEach((coord) =>
+          results.set(coord.originalIndex, null),
+        );
         return { ok: true, value: results };
       }
-      return { ok: false, error: `HTTP ${response.status} for WCS tile ${batch.tileKey}` };
+      return {
+        ok: false,
+        error: `HTTP ${response.status} for WCS tile ${batch.tileKey}`,
+      };
     }
 
     const arrayBuffer = await response.arrayBuffer();
     const tiff = await fromArrayBuffer(arrayBuffer);
     const image = await tiff.getImage();
     const rasters = await image.readRasters();
-    const elevationData = rasters[0] as Int16Array | Float32Array | Float64Array;
+    const elevationData = rasters[0] as
+      | Int16Array
+      | Float32Array
+      | Float64Array;
 
     const width = image.getWidth();
     const height = image.getHeight();
@@ -334,7 +354,10 @@ async function fetchWCSTileAndExtractElevations(
 
     return { ok: true, value: results };
   } catch (error) {
-    return { ok: false, error: `Fetch error for WCS tile ${batch.tileKey}: ${error}` };
+    return {
+      ok: false,
+      error: `Fetch error for WCS tile ${batch.tileKey}: ${error}`,
+    };
   }
 }
 
@@ -407,7 +430,10 @@ export async function fetchElevationsFromWCSTerrainTiles(
         }
       } else {
         for (const coord of batch.coordinates) {
-          results[coord.originalIndex] = { ok: false, error: batchResult.error };
+          results[coord.originalIndex] = {
+            ok: false,
+            error: batchResult.error,
+          };
         }
       }
     }
@@ -415,4 +441,3 @@ export async function fetchElevationsFromWCSTerrainTiles(
 
   return results;
 }
-
