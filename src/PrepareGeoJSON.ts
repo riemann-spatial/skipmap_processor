@@ -10,7 +10,7 @@ import clusterSkiAreas from "./clustering/ClusterSkiAreas";
 import { DataPaths, getPath } from "./io/GeoJSONFiles";
 import { readGeoJSONFeatures } from "./io/GeoJSONReader";
 import { convertGeoJSONToGeoPackage } from "./io/GeoPackageWriter";
-import { getPostGISDataStore, OutputFeature } from "./io/PostGISDataStore";
+import { OutputFeature, getPostGISDataStore } from "./io/PostGISDataStore";
 import * as CSVFormatter from "./transforms/CSVFormatter";
 import { createElevationProcessor } from "./transforms/Elevation";
 import toFeatureCollection from "./transforms/FeatureCollection";
@@ -29,11 +29,10 @@ import {
 } from "./transforms/SkiAreaSiteProvider";
 import {
   accumulate,
-  filter,
   flatMap,
   flatMapArray,
   map,
-  mapAsync,
+  mapAsync
 } from "./transforms/StreamTransforms";
 import { RunNormalizerAccumulator } from "./transforms/accumulator/RunNormalizerAccumulator";
 
