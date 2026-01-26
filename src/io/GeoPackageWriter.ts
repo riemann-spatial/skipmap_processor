@@ -1,17 +1,17 @@
 import {
-  BoundingBox,
-  GeoPackage,
-  GeoPackageAPI,
-  GeometryColumns,
+    BoundingBox,
+    GeoPackage,
+    GeoPackageAPI,
+    GeometryColumns,
 } from "@ngageoint/geopackage";
 import centroid from "@turf/centroid";
 import { existsSync } from "fs";
 import { Feature } from "geojson";
 import {
-  FeatureType,
-  LiftProperties,
-  RunProperties,
-  SkiAreaProperties,
+    FeatureType,
+    LiftProperties,
+    RunProperties,
+    SkiAreaProperties,
 } from "openskidata-format";
 import { Transform } from "stream";
 import { pipeline } from "stream/promises";
@@ -396,9 +396,20 @@ export class GeoPackageWriter {
 
     // Special handling for ski areas - create point layer with centroids
     if (featureType === FeatureType.SkiArea) {
-      const pointFeatures = features.map((feature) => {
+      const pointFeatures: Feature<GeoJSON.Geometry, FeaturePropertiesMap[T]>[] =
+        features.map((feature) => {
         if (feature.geometry.type === "Point") {
           return feature;
+        }
+        if (feature.geometry.type === "MultiPoint") {
+          const coords = feature.geometry.coordinates[0];
+          return {
+            ...feature,
+            geometry: {
+              type: "Point",
+              coordinates: coords,
+            } as GeoJSON.Point,
+          };
         }
         // Use turf centroid to get the center point of any geometry
         const centerPoint = centroid(feature);

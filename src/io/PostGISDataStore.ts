@@ -188,6 +188,97 @@ export class PostGISDataStore {
     await this.batchInsertOutputSkiAreas(features);
   }
 
+  async createOutput2DViews(): Promise<void> {
+    const client = await this.pool.connect();
+    try {
+      await client.query(
+        `CREATE OR REPLACE VIEW "output".lifts_2d AS
+         SELECT lifts.id,
+                lifts.feature_id,
+                st_force2d(lifts.geometry) AS geometry,
+                lifts.type,
+                lifts.name,
+                lifts.ref,
+                lifts.ref_fr_cairn,
+                lifts.description,
+                lifts.lift_type,
+                lifts.status,
+                lifts.oneway,
+                lifts.occupancy,
+                lifts.capacity,
+                lifts.duration,
+                lifts.bubble,
+                lifts.heating,
+                lifts.detachable,
+                lifts.websites,
+                lifts.wikidata_id,
+                lifts.sources,
+                lifts.places,
+                lifts.properties,
+                lifts.created_at,
+                (
+                  SELECT string_agg((elem.value -> 'properties') ->> 'name', ', ')
+                  FROM jsonb_array_elements(lifts.ski_areas) elem(value)
+                ) AS ski_area_names
+         FROM output.lifts`,
+      );
+
+      await client.query(
+        `CREATE OR REPLACE VIEW "output".runs_2d AS
+         SELECT runs.id,
+                runs.feature_id,
+                st_force2d(runs.geometry) AS geometry,
+                runs.type,
+                runs.name,
+                runs.ref,
+                runs.description,
+                runs.uses,
+                runs.difficulty,
+                runs.difficulty_convention,
+                runs.oneway,
+                runs.gladed,
+                runs.patrolled,
+                runs.lit,
+                runs.grooming,
+                runs.status,
+                runs.websites,
+                runs.wikidata_id,
+                runs.sources,
+                runs.places,
+                runs.elevation_profile,
+                runs.properties,
+                runs.created_at,
+                (
+                  SELECT string_agg((elem.value -> 'properties') ->> 'name', ', ')
+                  FROM jsonb_array_elements(runs.ski_areas) elem(value)
+                ) AS ski_area_names
+         FROM output.runs`,
+      );
+
+      await client.query(
+        `CREATE OR REPLACE VIEW "output".ski_areas_2d AS
+         SELECT ski_areas.id,
+                ski_areas.feature_id,
+                st_force2d(ski_areas.geometry) AS geometry,
+                ski_areas.type,
+                ski_areas.name,
+                ski_areas.status,
+                ski_areas.activities,
+                ski_areas.run_convention,
+                ski_areas.websites,
+                ski_areas.wikidata_id,
+                ski_areas.sources,
+                ski_areas.places,
+                ski_areas.statistics,
+                ski_areas.properties,
+                ski_areas.created_at
+         FROM output.ski_areas`,
+      );
+    } finally {
+      client.release();
+    }
+  }
+
   async *streamInputRuns(): AsyncGenerator<GeoJSON.Feature> {
     yield* this.streamFeatures("input.runs");
   }

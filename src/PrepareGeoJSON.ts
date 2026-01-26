@@ -324,6 +324,8 @@ export default async function prepare(paths: DataPaths, config: Config) {
           }
           await dataStore.saveOutputLifts(liftFeatures);
           console.log(`Exported ${liftFeatures.length} lifts to PostGIS`);
+
+          await dataStore.createOutput2DViews();
         },
       );
 

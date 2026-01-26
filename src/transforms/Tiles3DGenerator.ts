@@ -90,6 +90,8 @@ export async function generate3DTiles(
     getPostgresPoolConfig(postgresConfig.processingDatabase, postgresConfig),
   );
 
+  const sharedTilesDir = "/data/shared/3dtiles";
+
   // Ensure output directory exists
   if (!fs.existsSync(tiles3DConfig.outputDir)) {
     fs.mkdirSync(tiles3DConfig.outputDir, { recursive: true });
@@ -223,6 +225,11 @@ export async function generate3DTiles(
     }
   } finally {
     await pool.end();
+  }
+
+  if (fs.existsSync(tiles3DConfig.outputDir)) {
+    fs.mkdirSync(sharedTilesDir, { recursive: true });
+    fs.cpSync(tiles3DConfig.outputDir, sharedTilesDir, { recursive: true });
   }
 
   console.log("3D Tiles generation complete");
