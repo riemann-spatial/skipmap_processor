@@ -55,13 +55,15 @@ WORKDIR /app
 # Development stage
 FROM base AS development
 
-# Install build dependencies for native modules and create data directory
+# Install build dependencies for native modules, DEM preprocessing tools, and create data directory
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     apt-get update && apt-get install -y \
     build-essential \
     python3 \
-    && mkdir -p data
+    gdal-bin \
+    p7zip-full \
+    && mkdir -p data /data/dem
 
 # Copy scripts (done early as they rarely change)
 COPY scripts/init-postgres.sh /usr/local/bin/init-postgres.sh

@@ -1,4 +1,5 @@
 import { fromArrayBuffer } from "geotiff";
+import { fetchWithRetry } from "../utils/fetchWithRetry";
 import { latLngToTileXY } from "./AWSTerrainTiles";
 
 export const DEFAULT_WCS_ZOOM = 15;
@@ -297,7 +298,7 @@ async function fetchWCSTileAndExtractElevations(
   batch: WCSBatch,
 ): Promise<Result<Map<number, number | null>, string>> {
   try {
-    const response = await fetch(batch.url, {
+    const response = await fetchWithRetry(batch.url, {
       headers: {
         "User-Agent":
           "openskidata-processor/1.0.0 (+https://github.com/russellporter/openskidata-processor)",

@@ -1,17 +1,17 @@
 import {
-    BoundingBox,
-    GeoPackage,
-    GeoPackageAPI,
-    GeometryColumns,
+  BoundingBox,
+  GeoPackage,
+  GeoPackageAPI,
+  GeometryColumns,
 } from "@ngageoint/geopackage";
 import centroid from "@turf/centroid";
 import { existsSync } from "fs";
 import { Feature } from "geojson";
 import {
-    FeatureType,
-    LiftProperties,
-    RunProperties,
-    SkiAreaProperties,
+  FeatureType,
+  LiftProperties,
+  RunProperties,
+  SkiAreaProperties,
 } from "openskidata-format";
 import { Transform } from "stream";
 import { pipeline } from "stream/promises";
@@ -396,8 +396,10 @@ export class GeoPackageWriter {
 
     // Special handling for ski areas - create point layer with centroids
     if (featureType === FeatureType.SkiArea) {
-      const pointFeatures: Feature<GeoJSON.Geometry, FeaturePropertiesMap[T]>[] =
-        features.map((feature) => {
+      const pointFeatures: Feature<
+        GeoJSON.Geometry,
+        FeaturePropertiesMap[T]
+      >[] = features.map((feature) => {
         if (feature.geometry.type === "Point") {
           return feature;
         }
@@ -526,7 +528,9 @@ export class GeoPackageWriter {
 
     const hasZ = features.some((feature) => {
       const coords = this.extractCoordinates(feature.geometry);
-      return coords.some((coord) => coord.length >= 3 && Number.isFinite(coord[2]));
+      return coords.some(
+        (coord) => coord.length >= 3 && Number.isFinite(coord[2]),
+      );
     });
 
     // Create geometry columns

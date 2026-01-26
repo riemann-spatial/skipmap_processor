@@ -7,8 +7,13 @@ import {
   RunFeature,
   SkiAreaFeature,
 } from "openskidata-format";
-import { ElevationServerConfig, PostgresConfig } from "../Config";
+import {
+  AWS_TERRAIN_TILES_URL,
+  ElevationServerConfig,
+  PostgresConfig,
+} from "../Config";
 import { GeometryError } from "../errors";
+import { fetchWithRetry } from "../utils/fetchWithRetry";
 import { PostgresCache } from "../utils/PostgresCache";
 import {
   DEFAULT_AWS_TERRAIN_ZOOM,
@@ -19,6 +24,7 @@ import {
   DEFAULT_WCS_ZOOM,
   fetchElevationsFromWCSTerrainTiles,
 } from "./WCSTerrainTiles";
+import { fetchElevationsFromLocalDEM } from "./LocalDEMTerrainTiles";
 
 const DEFAULT_ELEVATION_PROFILE_RESOLUTION = 25;
 const MIN_ELEVATION_PROFILE_RESOLUTION = 10;
@@ -108,6 +114,9 @@ function resolveElevationProfileResolution(
         MAX_ELEVATION_PROFILE_RESOLUTION,
       );
     }
+    case "local-dem":
+      // Local DEM files typically have high resolution, use minimum profile resolution
+      return MIN_ELEVATION_PROFILE_RESOLUTION;
     default:
       return DEFAULT_ELEVATION_PROFILE_RESOLUTION;
   }
@@ -346,16 +355,59 @@ async function fetchElevationsFromServer(
   coordinates: number[][],
   elevationServerConfig: ElevationServerConfig,
 ): Promise<Result<number | null, string>[]> {
+  // Fetch from primary source
+  const primaryResults = await fetchElevationsFromPrimarySource(
+    coordinates,
+    elevationServerConfig,
+  );
+
+  // AWS is the global fallback - skip if already using AWS
+  if (elevationServerConfig.type === "aws-terrain-tiles") {
+    return primaryResults;
+  }
+
+  // Find coordinates that need fallback (null values or errors)
+  const needsFallback: { index: number; coords: number[] }[] = [];
+  for (let i = 0; i < primaryResults.length; i++) {
+    const result = primaryResults[i];
+    if (!result.ok || result.value === null) {
+      needsFallback.push({ index: i, coords: coordinates[i] });
+    }
+  }
+
+  if (needsFallback.length === 0) {
+    return primaryResults;
+  }
+
+  // Fetch missing elevations from AWS fallback
+  const fallbackCoords = needsFallback.map((item) => item.coords);
+  const fallbackResults = await fetchElevationsFromAWSTerrainTiles(
+    fallbackCoords,
+    AWS_TERRAIN_TILES_URL,
+    DEFAULT_AWS_TERRAIN_ZOOM,
+    elevationServerConfig.interpolate,
+  );
+
+  // Merge fallback results into primary results
+  const mergedResults = [...primaryResults];
+  for (let i = 0; i < needsFallback.length; i++) {
+    const originalIndex = needsFallback[i].index;
+    mergedResults[originalIndex] = fallbackResults[i];
+  }
+
+  return mergedResults;
+}
+
+async function fetchElevationsFromPrimarySource(
+  coordinates: number[][],
+  elevationServerConfig: ElevationServerConfig,
+): Promise<Result<number | null, string>[]> {
   switch (elevationServerConfig.type) {
     case "racemap":
-      const racemapResults = await fetchElevationsFromRacemap(
+      return await fetchElevationsFromRacemap(
         coordinates,
         elevationServerConfig.url,
       );
-      return racemapResults.map((elevation) => ({
-        ok: true,
-        value: elevation,
-      }));
     case "tileserver-gl":
       return await fetchElevationsFromTileserverGL(
         coordinates,
@@ -389,6 +441,11 @@ async function fetchElevationsFromServer(
         tileSize: elevationServerConfig.wcsTileSize,
         nodataValue: elevationServerConfig.wcsNoDataValue,
       });
+    case "local-dem":
+      return await fetchElevationsFromLocalDEM(
+        coordinates,
+        elevationServerConfig,
+      );
     default:
       const exhaustiveCheck: never = elevationServerConfig.type;
       throw new Error(`Unknown elevation server type: ${exhaustiveCheck}`);
@@ -398,20 +455,27 @@ async function fetchElevationsFromServer(
 async function fetchElevationsFromRacemap(
   coordinates: number[][],
   elevationServerURL: string,
-): Promise<(number | null)[]> {
-  const response = await fetch(elevationServerURL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(coordinates),
-  });
+): Promise<Result<number | null, string>[]> {
+  try {
+    const response = await fetchWithRetry(elevationServerURL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(coordinates),
+    });
 
-  if (!response.ok) {
-    throw new Error("Failed status code: " + response.status);
+    if (!response.ok) {
+      const error = `HTTP ${response.status} from Racemap elevation server`;
+      return coordinates.map(() => ({ ok: false, error }));
+    }
+
+    const elevations: (number | null)[] = await response.json();
+    return elevations.map((elevation) => ({ ok: true, value: elevation }));
+  } catch (error) {
+    const errorMessage = `Fetch error from Racemap: ${error}`;
+    return coordinates.map(() => ({ ok: false, error: errorMessage }));
   }
-
-  return await response.json();
 }
 
 async function fetchElevationsBatchFromTileserverGLAtZoom(
@@ -428,7 +492,7 @@ async function fetchElevationsBatchFromTileserverGLAtZoom(
       z: zoom,
     }));
 
-    const response = await fetch(batchEndpointUrl, {
+    const response = await fetchWithRetry(batchEndpointUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

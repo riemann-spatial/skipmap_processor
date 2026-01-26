@@ -1,4 +1,5 @@
 import { fromArrayBuffer } from "geotiff";
+import { fetchWithRetry } from "../utils/fetchWithRetry";
 
 const TILE_SIZE = 512;
 const DEFAULT_AWS_TERRAIN_ZOOM = 15;
@@ -262,7 +263,7 @@ export async function fetchTileAndExtractElevations(
   batch: TileBatch,
 ): Promise<Result<Map<number, number | null>, string>> {
   try {
-    const response = await fetch(batch.url, {
+    const response = await fetchWithRetry(batch.url, {
       headers: {
         "User-Agent":
           "openskidata-processor/1.0.0 (+https://github.com/russellporter/openskidata-processor)",

@@ -32,7 +32,7 @@ import {
   flatMap,
   flatMapArray,
   map,
-  mapAsync
+  mapAsync,
 } from "./transforms/StreamTransforms";
 import { RunNormalizerAccumulator } from "./transforms/accumulator/RunNormalizerAccumulator";
 
@@ -114,7 +114,9 @@ export default async function prepare(paths: DataPaths, config: Config) {
             await StreamToPromise(
               merge([
                 readGeoJSONFeatures(paths.input.geoJSON.skiAreas).pipe(
-                  flatMap(formatSkiArea(InputSkiAreaType.OPENSTREETMAP_LANDUSE)),
+                  flatMap(
+                    formatSkiArea(InputSkiAreaType.OPENSTREETMAP_LANDUSE),
+                  ),
                 ),
                 Readable.from(siteProvider.getGeoJSONSites()),
                 readGeoJSONFeatures(paths.input.geoJSON.skiMapSkiAreas).pipe(

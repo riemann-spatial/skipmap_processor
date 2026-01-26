@@ -170,6 +170,16 @@ ELEVATION_WCS_TILE_SIZE="256"        # optional (default: 256)
 ELEVATION_WCS_NODATA_VALUE="-32768"  # optional (default: -32768)
 ```
 
+**Local DEM Files:**
+For high-resolution national DEM datasets stored as local GeoTIFF files. AWS Terrain Tiles automatically fills gaps for coordinates outside local coverage.
+
+```bash
+ELEVATION_SERVER_TYPE="local-dem"
+LOCAL_DEM_DIRECTORY="/data/dem"
+```
+
+See [docs/LOCAL_DEM.md](docs/LOCAL_DEM.md) for detailed setup instructions, including how to download and prepare DEM files from sources like French RGE ALTI, Swiss swissALTI3D, and Austrian DEMs.
+
 ### Reverse geocoding
 
 Features will be augmented with country/region/locality information.

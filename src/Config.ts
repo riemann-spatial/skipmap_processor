@@ -28,7 +28,12 @@ export type ElevationServerType =
   | "racemap"
   | "tileserver-gl"
   | "aws-terrain-tiles"
-  | "wcs";
+  | "wcs"
+  | "local-dem";
+
+// AWS Terrain Tiles - globally available, used as implicit fallback
+export const AWS_TERRAIN_TILES_URL =
+  "https://s3.amazonaws.com/elevation-tiles-prod/geotiff";
 
 export type ElevationServerConfig = {
   url: string;
@@ -44,6 +49,9 @@ export type ElevationServerConfig = {
   wcsAxisOrder?: "lonlat" | "latlon";
   wcsTileSize?: number;
   wcsNoDataValue?: number;
+
+  // Local DEM configuration (used when type === "local-dem")
+  localDemDirectory?: string;
 };
 
 export type TilesConfig = { mbTilesPath: string; tilesDir: string };
@@ -114,15 +122,25 @@ export function configFromEnvironment(): Config {
     );
   }
 
-  const elevationServerURL = process.env["ELEVATION_SERVER_URL"] || null;
   const outputDir = process.env["OUTPUT_DIR"] ?? "data";
 
+  // Elevation is always enabled - AWS Terrain Tiles is the default
   const elevationServerType =
-    (process.env["ELEVATION_SERVER_TYPE"] as ElevationServerType) ?? "racemap";
+    (process.env["ELEVATION_SERVER_TYPE"] as ElevationServerType) ??
+    "aws-terrain-tiles";
+  const elevationServerURL =
+    process.env["ELEVATION_SERVER_URL"] || AWS_TERRAIN_TILES_URL;
+  const localDemDirectory = process.env["LOCAL_DEM_DIRECTORY"];
+
+  // Disable elevation only if explicitly set to "none" or "disabled"
+  const disableElevation =
+    process.env["ELEVATION_SERVER_TYPE"] === "none" ||
+    process.env["ELEVATION_SERVER_TYPE"] === "disabled";
 
   return {
-    elevationServer: elevationServerURL
-      ? {
+    elevationServer: disableElevation
+      ? null
+      : {
           url: elevationServerURL,
           type: elevationServerType,
           zoom: process.env["ELEVATION_SERVER_ZOOM"]
@@ -150,8 +168,10 @@ export function configFromEnvironment(): Config {
           wcsNoDataValue: process.env["ELEVATION_WCS_NODATA_VALUE"]
             ? parseFloat(process.env["ELEVATION_WCS_NODATA_VALUE"])
             : DEFAULT_NODATA_VALUE,
-        }
-      : null,
+
+          // Local DEM-specific (only used when ELEVATION_SERVER_TYPE=local-dem)
+          localDemDirectory: localDemDirectory,
+        },
     geocodingServer:
       process.env.GEOCODING_SERVER_URL !== undefined
         ? {
