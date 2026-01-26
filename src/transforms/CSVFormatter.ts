@@ -165,7 +165,14 @@ function formatRun(feature: RunFeature): string {
     properties.difficulty,
   );
 
-  const elevationData = getRunElevationData(feature);
+  // Wrap in try-catch to handle features with incomplete elevation data
+  // (some coordinates may be missing Z values if elevation lookup failed)
+  let elevationData;
+  try {
+    elevationData = getRunElevationData(feature);
+  } catch {
+    elevationData = null;
+  }
 
   return [
     escapeField(properties.name),
@@ -201,7 +208,14 @@ function formatRun(feature: RunFeature): string {
 
 function formatLift(feature: LiftFeature): string {
   const properties = feature.properties;
-  const elevationData = getLiftElevationData(feature);
+  // Wrap in try-catch to handle features with incomplete elevation data
+  // (some coordinates may be missing Z values if elevation lookup failed)
+  let elevationData;
+  try {
+    elevationData = getLiftElevationData(feature);
+  } catch {
+    elevationData = null;
+  }
 
   return [
     escapeField(properties.name),
