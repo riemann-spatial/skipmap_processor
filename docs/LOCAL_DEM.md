@@ -28,10 +28,7 @@ docker volume create dem_data
 docker compose build
 
 # 3. Prepare your DEM files (example with French RGE ALTI)
-docker compose exec app ./scripts/prepare-dem.sh \
-    /path/to/RGEALTI_D073.7z.001 \
-    /data/dem \
-    EPSG:2154
+docker compose exec app ./scripts/prepare-dem.sh /downloads/RGEALTI_2-0_1M_ASC_LAMB93-IGN69_D073_2020-10-15.7z.001 /data/dem EPSG:2154
 
 # 4. Configure environment variables in docker-compose.yml (see Configuration below)
 
@@ -211,6 +208,27 @@ volumes:
 4. **Interpolation**: Bilinear interpolation is used by default for sub-pixel accuracy
 5. **Automatic Fallback**: Coordinates outside local DEM coverage automatically use AWS Terrain Tiles
 6. **Retry Logic**: Network requests (for AWS fallback) automatically retry on transient failures with exponential backoff
+
+## Deleting DEM Files
+
+To delete all generated DEM files from the volume:
+
+```bash
+docker compose exec app bash -c "rm -rf /data/dem/*"
+```
+
+To delete only `.tif` files:
+
+```bash
+docker compose exec app bash -c "find /data/dem -name '*.tif' -delete"
+```
+
+Alternatively, remove the entire volume:
+
+```bash
+docker compose down
+docker volume rm dem_data
+```
 
 ## Troubleshooting
 

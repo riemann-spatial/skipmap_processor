@@ -68,4 +68,19 @@ export const pointsOfInterestDownloadConfig: OSMDownloadConfig = {
   `,
 };
 
+// Highways query - excludes piste and lift ways to avoid duplicates
+export const highwaysDownloadConfig: OSMDownloadConfig = {
+  query: (bbox) => `
+    [out:json][timeout:1800]${overpassBBoxQuery(bbox)};
+    (
+      way["highway"]["highway"!~"^(proposed|construction|abandoned|disused)$"]
+        [!"piste:type"]
+        [!"aerialway"]
+        [!"railway"];
+    );
+    (._; >;);
+    out;
+    `,
+};
+
 export const skiMapSkiAreasURL = "https://skimap.org/SkiAreas/index.geojson";

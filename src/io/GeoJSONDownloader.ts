@@ -7,6 +7,7 @@ import { performanceMonitor } from "../clustering/database/PerformanceMonitor";
 import { InputSkiMapOrgSkiAreaFeature } from "../features/SkiAreaFeature";
 import {
   OSMDownloadConfig,
+  highwaysDownloadConfig,
   liftsDownloadConfig,
   runsDownloadConfig,
   skiAreaSitesDownloadConfig,
@@ -38,7 +39,7 @@ export default async function downloadAndConvertToGeoJSON(
 
     // Serialize downloads using the same endpoint so we don't get rate limited by the Overpass API
     await performanceMonitor.withOperation("Downloading OSM data", async () => {
-      await Promise.all([
+      const downloads: Promise<void>[] = [
         downloadAndStoreRuns(overpassEndpoints, paths, bbox, dataStore),
         (async () => {
           await downloadAndStoreLifts(
@@ -61,16 +62,29 @@ export default async function downloadAndConvertToGeoJSON(
           );
         })(),
         downloadAndStoreSkiMapOrgSkiAreas(paths, bbox, dataStore),
-      ]);
+      ];
+
+      // Conditionally download highways if enabled
+      if (process.env.COMPILE_HIGHWAY === "1") {
+        downloads.push(
+          downloadAndStoreHighways(overpassEndpoints, paths, bbox, dataStore),
+        );
+      }
+
+      await Promise.all(downloads);
     });
 
     // Log counts
     const runsCount = await dataStore.getInputRunsCount();
     const liftsCount = await dataStore.getInputLiftsCount();
     const skiAreasCount = await dataStore.getInputSkiAreasCount();
-    console.log(
-      `Stored in PostGIS: ${runsCount} runs, ${liftsCount} lifts, ${skiAreasCount} ski areas`,
-    );
+    let countLog = `Stored in PostGIS: ${runsCount} runs, ${liftsCount} lifts, ${skiAreasCount} ski areas`;
+
+    if (process.env.COMPILE_HIGHWAY === "1") {
+      const highwaysCount = await dataStore.getInputHighwaysCount();
+      countLog += `, ${highwaysCount} highways`;
+    }
+    console.log(countLog);
 
     performanceMonitor.logTimeline();
 
@@ -200,6 +214,29 @@ async function downloadAndStoreSkiMapOrgSkiAreas(
 
   // Also write to file for backward compatibility
   await writeFile(paths.geoJSON.skiMapSkiAreas, JSON.stringify(geoJSON));
+}
+
+async function downloadAndStoreHighways(
+  endpoints: string[],
+  paths: InputDataPaths,
+  bbox: GeoJSON.BBox | null,
+  dataStore: PostGISDataStore,
+): Promise<void> {
+  const osmJSON = await downloadOSMJSON(
+    endpoints,
+    highwaysDownloadConfig,
+    bbox,
+  );
+  const geoJSON = convertOSMToGeoJSON(osmJSON);
+
+  // Store in PostGIS
+  const features = geoJSON.features.map((f: GeoJSON.Feature) =>
+    osmFeatureToInputFeature(f),
+  );
+  await dataStore.saveInputHighways(features);
+
+  // Also write to file for backward compatibility
+  await writeFeatureCollection(geoJSON, paths.geoJSON.highways);
 }
 
 function osmFeatureToInputFeature(feature: GeoJSON.Feature): InputFeature {

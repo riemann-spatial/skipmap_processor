@@ -9,11 +9,15 @@ import { Config, ElevationServerConfig, PostgresConfig } from "./Config";
 import clusterSkiAreas from "./clustering/ClusterSkiAreas";
 import { DataPaths, getPath } from "./io/GeoJSONFiles";
 import { readGeoJSONFeatures } from "./io/GeoJSONReader";
-import { convertGeoJSONToGeoPackage } from "./io/GeoPackageWriter";
+import {
+  convertGeoJSONToGeoPackage,
+  convertHighwayGeoJSONToGeoPackage,
+} from "./io/GeoPackageWriter";
 import { OutputFeature, getPostGISDataStore } from "./io/PostGISDataStore";
 import * as CSVFormatter from "./transforms/CSVFormatter";
 import { createElevationProcessor } from "./transforms/Elevation";
 import toFeatureCollection from "./transforms/FeatureCollection";
+import { formatHighway } from "./transforms/HighwayFormatter";
 import { formatLift } from "./transforms/LiftFormatter";
 import * as MapboxGLFormatter from "./transforms/MapboxGLFormatter";
 import { formatRun } from "./transforms/RunFormatter";
@@ -155,6 +159,22 @@ export default async function prepare(paths: DataPaths, config: Config) {
               .pipe(createWriteStream(paths.intermediate.lifts)),
           );
         });
+
+        // Process highways if enabled
+        if (process.env.COMPILE_HIGHWAY === "1") {
+          await performanceMonitor.withOperation(
+            "Processing highways",
+            async () => {
+              await StreamToPromise(
+                readGeoJSONFeatures(paths.input.geoJSON.highways)
+                  .pipe(flatMapArray(formatHighway))
+                  .pipe(mapAsync(elevationTransform?.transform || null, 10))
+                  .pipe(toFeatureCollection())
+                  .pipe(createWriteStream(paths.intermediate.highways)),
+              );
+            },
+          );
+        }
       } finally {
         if (elevationTransform) {
           await elevationTransform.processor.close();
@@ -164,7 +184,12 @@ export default async function prepare(paths: DataPaths, config: Config) {
   );
 
   await performanceMonitor.withPhase("Phase 3: Clustering", async () => {
-    await clusterSkiAreas(paths.intermediate, paths.output, config);
+    await clusterSkiAreas(
+      paths.intermediate,
+      paths.output,
+      config,
+      process.env.COMPILE_HIGHWAY === "1",
+    );
   });
 
   if (config.elevationServer) {
@@ -271,6 +296,15 @@ export default async function prepare(paths: DataPaths, config: Config) {
           type,
         );
       }
+
+      // Add highways if enabled
+      if (process.env.COMPILE_HIGHWAY === "1") {
+        await convertHighwayGeoJSONToGeoPackage(
+          paths.output.highways,
+          paths.output.geoPackage,
+          "highways",
+        );
+      }
     });
 
     // Generate tiles if enabled
@@ -326,6 +360,20 @@ export default async function prepare(paths: DataPaths, config: Config) {
           }
           await dataStore.saveOutputLifts(liftFeatures);
           console.log(`Exported ${liftFeatures.length} lifts to PostGIS`);
+
+          // Export highways if enabled
+          if (process.env.COMPILE_HIGHWAY === "1") {
+            const highwayFeatures: OutputFeature[] = [];
+            for await (const feature of readGeoJSONFeaturesAsync(
+              paths.output.highways,
+            )) {
+              highwayFeatures.push(geoJSONFeatureToOutputFeature(feature));
+            }
+            await dataStore.saveOutputHighways(highwayFeatures);
+            console.log(
+              `Exported ${highwayFeatures.length} highways to PostGIS`,
+            );
+          }
 
           await dataStore.createOutput2DViews();
         },

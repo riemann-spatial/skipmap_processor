@@ -81,6 +81,14 @@ export class PostGISDataStore {
       await client.query(
         "TRUNCATE TABLE input.ski_area_sites RESTART IDENTITY CASCADE",
       );
+      // Conditionally truncate highways table if it exists
+      await client.query(`
+        DO $$ BEGIN
+          IF EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'input' AND table_name = 'highways') THEN
+            TRUNCATE TABLE input.highways RESTART IDENTITY CASCADE;
+          END IF;
+        END $$;
+      `);
       console.log("Input tables reset complete.");
     } finally {
       client.release();
@@ -98,6 +106,14 @@ export class PostGISDataStore {
       await client.query(
         "TRUNCATE TABLE output.ski_areas RESTART IDENTITY CASCADE",
       );
+      // Conditionally truncate highways table if it exists
+      await client.query(`
+        DO $$ BEGIN
+          IF EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'output' AND table_name = 'highways') THEN
+            TRUNCATE TABLE output.highways RESTART IDENTITY CASCADE;
+          END IF;
+        END $$;
+      `);
       console.log("Output tables reset complete.");
     } finally {
       client.release();
@@ -110,6 +126,10 @@ export class PostGISDataStore {
 
   async saveInputLifts(features: InputFeature[]): Promise<void> {
     await this.batchInsertFeatures("input.lifts", features);
+  }
+
+  async saveInputHighways(features: InputFeature[]): Promise<void> {
+    await this.batchInsertFeatures("input.highways", features);
   }
 
   async saveInputSkiAreas(features: InputSkiAreaFeature[]): Promise<void> {
@@ -186,6 +206,10 @@ export class PostGISDataStore {
 
   async saveOutputSkiAreas(features: OutputFeature[]): Promise<void> {
     await this.batchInsertOutputSkiAreas(features);
+  }
+
+  async saveOutputHighways(features: OutputFeature[]): Promise<void> {
+    await this.batchInsertOutputHighways(features);
   }
 
   async createOutput2DViews(): Promise<void> {
@@ -274,6 +298,42 @@ export class PostGISDataStore {
                 ski_areas.created_at
          FROM output.ski_areas`,
       );
+
+      // Create highways_2d view if highways table exists
+      await client.query(`
+        DO $$ BEGIN
+          IF EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'output' AND table_name = 'highways') THEN
+            EXECUTE $view$
+              CREATE OR REPLACE VIEW "output".highways_2d AS
+              SELECT highways.id,
+                     highways.feature_id,
+                     st_force2d(highways.geometry) AS geometry,
+                     highways.type,
+                     highways.name,
+                     highways.ref,
+                     highways.highway_type,
+                     highways.is_road,
+                     highways.is_walkway,
+                     highways.is_private,
+                     highways.surface,
+                     highways.smoothness,
+                     highways.lit,
+                     highways.status,
+                     highways.websites,
+                     highways.wikidata_id,
+                     highways.ski_areas,
+                     highways.sources,
+                     highways.properties,
+                     highways.created_at,
+                     (
+                       SELECT string_agg((elem.value -> 'properties') ->> 'name', ', ')
+                       FROM jsonb_array_elements(highways.ski_areas) elem(value)
+                     ) AS ski_area_names
+              FROM output.highways
+            $view$;
+          END IF;
+        END $$;
+      `);
     } finally {
       client.release();
     }
@@ -285,6 +345,10 @@ export class PostGISDataStore {
 
   async *streamInputLifts(): AsyncGenerator<GeoJSON.Feature> {
     yield* this.streamFeatures("input.lifts");
+  }
+
+  async *streamInputHighways(): AsyncGenerator<GeoJSON.Feature> {
+    yield* this.streamFeatures("input.highways");
   }
 
   async *streamInputSkiAreas(
@@ -341,6 +405,10 @@ export class PostGISDataStore {
     yield* this.streamOutputFeatures("output.ski_areas");
   }
 
+  async *streamOutputHighways(): AsyncGenerator<GeoJSON.Feature> {
+    yield* this.streamOutputFeatures("output.highways");
+  }
+
   async getInputRunsCount(): Promise<number> {
     return this.getCount("input.runs");
   }
@@ -351,6 +419,10 @@ export class PostGISDataStore {
 
   async getInputSkiAreasCount(): Promise<number> {
     return this.getCount("input.ski_areas");
+  }
+
+  async getInputHighwaysCount(): Promise<number> {
+    return this.getCount("input.highways");
   }
 
   async close(): Promise<void> {
@@ -653,6 +725,88 @@ export class PostGISDataStore {
               p.sources ? JSON.stringify(p.sources) : null,
               p.places ? JSON.stringify(p.places) : null,
               p.statistics ? JSON.stringify(p.statistics) : null,
+              JSON.stringify(p),
+            ],
+          );
+        }
+      }
+    } finally {
+      client.release();
+    }
+  }
+
+  private async batchInsertOutputHighways(
+    features: OutputFeature[],
+  ): Promise<void> {
+    const client = await this.pool.connect();
+    try {
+      const batchSize = 500;
+      for (let i = 0; i < features.length; i += batchSize) {
+        const batch = features.slice(i, i + batchSize);
+        const values: unknown[] = [];
+        const placeholders: string[] = [];
+
+        batch.forEach((feature, idx) => {
+          const p = feature.properties;
+          const numCols = 14;
+          const offset = idx * numCols;
+          placeholders.push(
+            `($${offset + 1}, ST_Force3D(ST_GeomFromGeoJSON($${offset + 2})), $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8}, $${offset + 9}, $${offset + 10}, $${offset + 11}, $${offset + 12}, $${offset + 13}, $${offset + 14})`,
+          );
+          values.push(
+            feature.feature_id,
+            JSON.stringify(feature.geometry),
+            toString(p.type),
+            toString(p.name),
+            toString(p.ref),
+            toString(p.highwayType),
+            toBoolean(p.isRoad),
+            toBoolean(p.isWalkway),
+            toBoolean(p.isPrivate),
+            toString(p.surface),
+            toString(p.smoothness),
+            toBoolean(p.lit),
+            toString(p.status),
+            toTextArray(p.websites),
+          );
+        });
+
+        await client.query(
+          `INSERT INTO output.highways (feature_id, geometry, type, name, ref, highway_type, is_road, is_walkway, is_private, surface, smoothness, lit, status, websites)
+           VALUES ${placeholders.join(", ")}
+           ON CONFLICT (feature_id) DO UPDATE SET
+             geometry = EXCLUDED.geometry,
+             type = EXCLUDED.type,
+             name = EXCLUDED.name,
+             ref = EXCLUDED.ref,
+             highway_type = EXCLUDED.highway_type,
+             is_road = EXCLUDED.is_road,
+             is_walkway = EXCLUDED.is_walkway,
+             is_private = EXCLUDED.is_private,
+             surface = EXCLUDED.surface,
+             smoothness = EXCLUDED.smoothness,
+             lit = EXCLUDED.lit,
+             status = EXCLUDED.status,
+             websites = EXCLUDED.websites`,
+          values,
+        );
+
+        // Update JSONB columns and full properties
+        for (let j = 0; j < batch.length; j++) {
+          const feature = batch[j];
+          const p = feature.properties;
+          await client.query(
+            `UPDATE output.highways SET
+               wikidata_id = $2,
+               ski_areas = $3,
+               sources = $4,
+               properties = $5
+             WHERE feature_id = $1`,
+            [
+              feature.feature_id,
+              toString(p.wikidataID),
+              p.skiAreas ? JSON.stringify(p.skiAreas) : null,
+              p.sources ? JSON.stringify(p.sources) : null,
               JSON.stringify(p),
             ],
           );

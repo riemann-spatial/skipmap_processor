@@ -1,16 +1,28 @@
 import along from "@turf/along";
+import booleanIntersects from "@turf/boolean-intersects";
 import centroid from "@turf/centroid";
 import * as turf from "@turf/helpers";
 import length from "@turf/length";
 import nearestPoint from "@turf/nearest-point";
+import { createWriteStream } from "fs";
 import * as GeoJSON from "geojson";
-import { FeatureType, SkiAreaActivity, SourceType } from "openskidata-format";
+import {
+  FeatureType,
+  SkiAreaActivity,
+  SkiAreaFeature,
+  SourceType,
+} from "openskidata-format";
+import StreamToPromise from "stream-to-promise";
 import {
   GeocodingServerConfig,
   PostgresConfig,
   SnowCoverConfig,
 } from "../Config";
+import { HighwayFeature, SkiAreaReference } from "../features/HighwayFeature";
+import { readGeoJSONFeatures } from "../io/GeoJSONReader";
+import toFeatureCollection from "../transforms/FeatureCollection";
 import { getPoints, getPositions } from "../transforms/GeoTransforms";
+import { map } from "../transforms/StreamTransforms";
 import { ClusteringDatabase } from "./database/ClusteringDatabase";
 import { performanceMonitor } from "./database/PerformanceMonitor";
 import { MapObject } from "./MapObject";
@@ -224,4 +236,89 @@ export class SkiAreaClusteringService {
       return centroidPoint;
     }
   };
+
+  /**
+   * Associate highways with ski areas by spatial intersection.
+   * Highways that intersect ski area polygons get that ski area's reference.
+   */
+  async associateHighwaysWithSkiAreas(
+    highwaysInputPath: string,
+    highwaysOutputPath: string,
+    skiAreasOutputPath: string,
+  ): Promise<void> {
+    await performanceMonitor.withOperation(
+      "Associating highways with ski areas",
+      async () => {
+        // Load ski areas with polygon geometries
+        const skiAreaPolygons: SkiAreaFeature[] = [];
+        for await (const feature of readGeoJSONFeaturesGenerator(
+          skiAreasOutputPath,
+        )) {
+          const skiArea = feature as SkiAreaFeature;
+          // Only include ski areas with polygon or multipolygon geometries
+          if (
+            skiArea.geometry.type === "Polygon" ||
+            skiArea.geometry.type === "MultiPolygon"
+          ) {
+            skiAreaPolygons.push(skiArea);
+          }
+        }
+        console.log(
+          `Loaded ${skiAreaPolygons.length} ski areas with polygon geometries`,
+        );
+
+        // Process highways and associate with ski areas
+        await StreamToPromise(
+          readGeoJSONFeatures(highwaysInputPath)
+            .pipe(
+              map((feature: GeoJSON.Feature) => {
+                const highway = feature as HighwayFeature;
+                const matchingSkiAreas: SkiAreaReference[] = [];
+
+                // Check intersection with each ski area polygon
+                for (const skiArea of skiAreaPolygons) {
+                  try {
+                    if (booleanIntersects(highway.geometry, skiArea.geometry)) {
+                      matchingSkiAreas.push({
+                        properties: {
+                          id: skiArea.properties.id,
+                          name: skiArea.properties.name,
+                        },
+                      });
+                    }
+                  } catch (error) {
+                    // Skip invalid geometries
+                    continue;
+                  }
+                }
+
+                // Update highway with ski area references
+                return {
+                  ...highway,
+                  properties: {
+                    ...highway.properties,
+                    skiAreas: matchingSkiAreas,
+                  },
+                };
+              }),
+            )
+            .pipe(toFeatureCollection())
+            .pipe(createWriteStream(highwaysOutputPath)),
+        );
+
+        console.log(`Finished associating highways with ski areas`);
+      },
+    );
+  }
+}
+
+async function* readGeoJSONFeaturesGenerator(
+  filePath: string,
+): AsyncGenerator<GeoJSON.Feature> {
+  const fs = await import("fs/promises");
+  const content = await fs.readFile(filePath, "utf-8");
+  const geoJSON = JSON.parse(content) as GeoJSON.FeatureCollection;
+  for (const feature of geoJSON.features) {
+    yield feature;
+  }
 }

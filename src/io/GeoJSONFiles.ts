@@ -7,6 +7,7 @@ export interface CommonGeoJSONPaths {
   readonly skiAreas: string;
   readonly runs: string;
   readonly lifts: string;
+  readonly highways?: string;
 }
 
 export class InputDataPaths {
@@ -24,6 +25,7 @@ export class OSMJSONInputPaths {
   readonly skiAreaSites: string; // note: sites are represented with OSM JSON.
   readonly runs: string;
   readonly lifts: string;
+  readonly highways: string;
 
   constructor(folder: string) {
     if (!existsSync(folder)) {
@@ -33,6 +35,7 @@ export class OSMJSONInputPaths {
     this.skiAreaSites = join(folder, "input_ski_area_sites.osmjson");
     this.runs = join(folder, "input_runs.osmjson");
     this.lifts = join(folder, "input_lifts.osmjson");
+    this.highways = join(folder, "input_highways.osmjson");
   }
 }
 
@@ -41,6 +44,7 @@ export class GeoJSONInputPaths {
   readonly skiAreas: string;
   readonly runs: string;
   readonly lifts: string;
+  readonly highways: string;
 
   constructor(folder: string) {
     if (!existsSync(folder)) {
@@ -50,6 +54,7 @@ export class GeoJSONInputPaths {
     this.skiAreas = join(folder, "input_openstreetmap_ski_areas.geojson");
     this.runs = join(folder, "input_runs.geojson");
     this.lifts = join(folder, "input_lifts.geojson");
+    this.highways = join(folder, "input_highways.geojson");
   }
 }
 
@@ -57,6 +62,7 @@ export class GeoJSONIntermediatePaths {
   readonly skiAreas: string;
   readonly runs: string;
   readonly lifts: string;
+  readonly highways: string;
 
   constructor(folder: string) {
     if (!existsSync(folder)) {
@@ -65,6 +71,7 @@ export class GeoJSONIntermediatePaths {
     this.skiAreas = join(folder, "intermediate_ski_areas.geojson");
     this.runs = join(folder, "intermediate_runs.geojson");
     this.lifts = join(folder, "intermediate_lifts.geojson");
+    this.highways = join(folder, "intermediate_highways.geojson");
   }
 }
 
@@ -72,8 +79,9 @@ export class GeoJSONOutputPaths implements CommonGeoJSONPaths {
   readonly skiAreas: string;
   readonly runs: string;
   readonly lifts: string;
+  readonly highways: string;
 
-  readonly mapboxGL: CommonGeoJSONPaths;
+  readonly mapboxGL: CommonGeoJSONPaths & { highways: string };
   readonly csv: string;
   readonly geoPackage: string;
 
@@ -85,10 +93,12 @@ export class GeoJSONOutputPaths implements CommonGeoJSONPaths {
     this.skiAreas = join(folder, "ski_areas.geojson");
     this.runs = join(folder, "runs.geojson");
     this.lifts = join(folder, "lifts.geojson");
+    this.highways = join(folder, "highways.geojson");
     this.mapboxGL = {
       skiAreas: join(folder, "mapboxgl_ski_areas.geojson"),
       runs: join(folder, "mapboxgl_runs.geojson"),
       lifts: join(folder, "mapboxgl_lifts.geojson"),
+      highways: join(folder, "mapboxgl_highways.geojson"),
     };
     this.csv = join(folder, "csv");
     if (!existsSync(this.csv)) {

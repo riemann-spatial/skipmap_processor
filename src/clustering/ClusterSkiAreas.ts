@@ -10,6 +10,7 @@ export default async function clusterSkiAreas(
   intermediatePaths: GeoJSONIntermediatePaths,
   outputPaths: GeoJSONOutputPaths,
   config: Config,
+  processHighways: boolean = false,
 ): Promise<void> {
   const database = new PostgreSQLClusteringDatabase(config.postgresCache);
   const clusteringService = new SkiAreaClusteringService(database);
@@ -28,6 +29,15 @@ export default async function clusterSkiAreas(
       config.snowCover,
       config.postgresCache,
     );
+
+    // Process highways if enabled - associate with ski areas
+    if (processHighways) {
+      await clusteringService.associateHighwaysWithSkiAreas(
+        intermediatePaths.highways,
+        outputPaths.highways,
+        outputPaths.skiAreas,
+      );
+    }
   } finally {
     await database.close();
   }

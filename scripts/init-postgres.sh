@@ -139,6 +139,18 @@ CREATE TABLE input.ski_area_sites (
 );
 CREATE INDEX ski_area_sites_osm_id_idx ON input.ski_area_sites (osm_id);
 
+-- input.highways: Raw highway features from Overpass (optional, COMPILE_HIGHWAY=1)
+CREATE TABLE input.highways (
+  id SERIAL PRIMARY KEY,
+  osm_id BIGINT,
+  osm_type TEXT,
+  geometry GEOMETRY(Geometry, 4326),
+  properties JSONB,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX highways_input_geometry_idx ON input.highways USING GIST (geometry);
+CREATE INDEX highways_input_osm_id_idx ON input.highways (osm_id);
+
 -- ============================================
 -- OUTPUT SCHEMA: Processed/clustered features
 -- ============================================
@@ -241,6 +253,40 @@ CREATE INDEX ski_areas_output_feature_id_idx ON output.ski_areas (feature_id);
 CREATE INDEX ski_areas_output_status_idx ON output.ski_areas (status);
 CREATE INDEX ski_areas_output_name_idx ON output.ski_areas (name);
 CREATE INDEX ski_areas_output_activities_idx ON output.ski_areas USING GIN (activities);
+
+-- output.highways: Processed highway features with exploded properties (optional, COMPILE_HIGHWAY=1)
+CREATE TABLE output.highways (
+  id SERIAL PRIMARY KEY,
+  feature_id TEXT UNIQUE NOT NULL,
+  geometry GEOMETRY(GeometryZ, 4326),
+  -- Exploded properties
+  type TEXT,
+  name TEXT,
+  ref TEXT,
+  highway_type TEXT,
+  is_road BOOLEAN,
+  is_walkway BOOLEAN,
+  is_private BOOLEAN,
+  surface TEXT,
+  smoothness TEXT,
+  lit BOOLEAN,
+  status TEXT,
+  websites TEXT[],
+  wikidata_id TEXT,
+  -- Complex nested data as JSONB
+  ski_areas JSONB,
+  sources JSONB,
+  -- Full properties for backward compatibility
+  properties JSONB,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX highways_output_geometry_idx ON output.highways USING GIST (geometry);
+CREATE INDEX highways_output_feature_id_idx ON output.highways (feature_id);
+CREATE INDEX highways_output_highway_type_idx ON output.highways (highway_type);
+CREATE INDEX highways_output_status_idx ON output.highways (status);
+CREATE INDEX highways_output_name_idx ON output.highways (name);
+CREATE INDEX highways_output_is_road_idx ON output.highways (is_road);
+CREATE INDEX highways_output_is_walkway_idx ON output.highways (is_walkway);
 
 -- ============================================
 -- CLUSTERING SCHEMA: Working table (public schema)

@@ -52,7 +52,9 @@ services:
       - GENERATE_MBTILES=1 # results in mbtiles files for runs, lifts and ski areas, as well as a combined mbtiles file
       - GENERATE_3D_TILES=1 # Generate 3D Tiles tilesets (requires OUTPUT_TO_POSTGIS=1)
       # Set to false to only start PostgreSQL without running the processing pipeline
-      - COMPILE_NEW=false
+      - COMPILE_NEW=true
+      # Set to 1 to enable highway (road/walkway) compilation
+      - COMPILE_HIGHWAY=1
 
 volumes:
   node_modules:

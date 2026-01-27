@@ -1,6 +1,6 @@
 import * as fs from "fs";
-import * as path from "path";
 import { fromFile, GeoTIFFImage } from "geotiff";
+import * as path from "path";
 
 interface DEMFileBounds {
   filePath: string;
@@ -50,9 +50,6 @@ export class LocalDEMIndex {
         const bounds = await this.extractBounds(filePath);
         if (bounds) {
           this.files.push(bounds);
-          console.log(
-            `Indexed DEM file: ${tifFile} [${bounds.minLng.toFixed(4)}, ${bounds.minLat.toFixed(4)}, ${bounds.maxLng.toFixed(4)}, ${bounds.maxLat.toFixed(4)}]`,
-          );
         }
       } catch (error) {
         console.warn(`Failed to index DEM file ${tifFile}: ${error}`);
