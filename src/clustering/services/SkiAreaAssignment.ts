@@ -142,10 +142,12 @@ export class SkiAreaAssignment {
 
         const otherSkiAreas = await otherSkiAreasCursor.all();
         if (otherSkiAreas.length > 1) {
+          const containedSkiMapNames = otherSkiAreas
+            .map((sa) => sa.properties.name || "unnamed")
+            .join(", ");
           console.log(
-            "Removing OpenStreetMap ski area as it contains multiple Skimap.org ski areas and can't be merged correctly.",
+            `DISCARDED SKI AREA [MULTIPLE_SKIMAP_CONTAINED]: name="${skiArea.properties.name || "unnamed"}" | id="${skiArea.properties.id}" | geometry=${skiArea.geometry.type} | containedSkiMapAreas=[${containedSkiMapNames}] | sources=${JSON.stringify(skiArea.properties.sources)}`,
           );
-          console.log(JSON.stringify(skiArea));
 
           await this.database.removeObject(skiArea._key);
         }
@@ -176,7 +178,7 @@ export class SkiAreaAssignment {
         await this.database.markObjectsAsPartOfSkiArea(
           skiArea.id,
           memberObjects.map((obj) => obj._key),
-          options.objects.onlyInPolygon || false,
+          options.objects.onlyInPolygon ? "polygon" : "proximity",
         );
 
         const hasKnownSkiAreaActivities = skiArea.activities.length > 0;
@@ -210,7 +212,7 @@ export class SkiAreaAssignment {
             await this.database.markObjectsAsPartOfSkiArea(
               skiArea.id,
               memberObjects.map((obj) => obj._key),
-              options.objects.onlyInPolygon || false,
+              options.objects.onlyInPolygon ? "polygon" : "proximity",
             );
 
             const hasKnownSkiAreaActivities = skiArea.activities.length > 0;
@@ -283,9 +285,7 @@ export class SkiAreaAssignment {
 
     if (removeDueToNoObjects) {
       console.log(
-        `Removing ski area (${JSON.stringify(
-          skiArea.properties.sources,
-        )}) as no objects were found.`,
+        `DISCARDED SKI AREA [NO_OBJECTS]: name="${skiArea.properties.name || "unnamed"}" | id="${skiArea.properties.id}" | geometry=${skiArea.geometry.type} | sources=${JSON.stringify(skiArea.properties.sources)}`,
       );
       await this.database.removeObject(skiArea._key);
       return null;
@@ -305,11 +305,7 @@ export class SkiAreaAssignment {
 
     if (removeDueToSignificantObjectsInSiteRelation) {
       console.log(
-        `Removing ski area (${JSON.stringify(
-          skiArea.properties.sources,
-        )}) as a substantial number of objects were in a site=piste relation (${
-          liftsAndRunsInSiteRelation.length
-        } / ${liftsAndRuns.length}).`,
+        `DISCARDED SKI AREA [SITE_RELATION_OVERLAP]: name="${skiArea.properties.name || "unnamed"}" | id="${skiArea.properties.id}" | geometry=${skiArea.geometry.type} | objectsInSite=${liftsAndRunsInSiteRelation.length}/${liftsAndRuns.length} | sources=${JSON.stringify(skiArea.properties.sources)}`,
       );
       await this.database.removeObject(skiArea._key);
       return null;

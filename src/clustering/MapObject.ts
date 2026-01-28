@@ -11,6 +11,13 @@ import {
 } from "openskidata-format";
 import { VIIRSPixel } from "../utils/VIIRSPixelExtractor";
 
+export type SkiAreaAssignmentSource = "polygon" | "site" | "proximity";
+
+export interface SkiAreaAssignment {
+  skiAreaId: string;
+  assignedFrom: SkiAreaAssignmentSource;
+}
+
 export type MapObject = RunObject | LiftObject | SkiAreaObject;
 export type RunObject = DraftRun & { _id: string };
 export type LiftObject = DraftLift & { _id: string };
@@ -65,7 +72,7 @@ export type SkiAreaGeometry =
 
 interface BaseDraftMapObject {
   _key: string;
-  skiAreas: string[];
+  skiAreas: SkiAreaAssignment[];
   activities: SkiAreaActivity[];
 }
 

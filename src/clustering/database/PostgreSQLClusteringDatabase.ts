@@ -6,6 +6,7 @@ import {
   MapObject,
   MapObjectType,
   RunObject,
+  SkiAreaAssignmentSource,
   SkiAreaObject,
 } from "../MapObject";
 import {
@@ -509,7 +510,7 @@ export class PostgreSQLClusteringDatabase implements ClusteringDatabase {
   async markObjectsAsPartOfSkiArea(
     skiAreaId: string,
     objectKeys: string[],
-    isInSkiAreaPolygon: boolean,
+    assignedFrom: SkiAreaAssignmentSource,
   ): Promise<void> {
     this.ensureInitialized();
 
@@ -520,18 +521,25 @@ export class PostgreSQLClusteringDatabase implements ClusteringDatabase {
     const sortedKeys = [...objectKeys].sort();
 
     await this.executeTransaction(async (client) => {
-      const skiAreaIdJson = JSON.stringify([skiAreaId]);
+      const assignment = { skiAreaId, assignedFrom };
+      const assignmentJson = JSON.stringify([assignment]);
+      const isInSkiAreaPolygon = assignedFrom === "polygon";
 
+      // Check if this ski area ID is already assigned (regardless of source)
+      // by looking for any object with matching skiAreaId in the array
       await client.query(
         `UPDATE objects
          SET ski_areas = CASE
-           WHEN ski_areas @> $1::jsonb THEN ski_areas
-           ELSE COALESCE(ski_areas, '[]'::jsonb) || $1::jsonb
+           WHEN EXISTS (
+             SELECT 1 FROM jsonb_array_elements(COALESCE(ski_areas, '[]'::jsonb)) elem
+             WHERE elem->>'skiAreaId' = $1
+           ) THEN ski_areas
+           ELSE COALESCE(ski_areas, '[]'::jsonb) || $2::jsonb
          END,
-         is_in_ski_area_polygon = is_in_ski_area_polygon OR $2,
+         is_in_ski_area_polygon = is_in_ski_area_polygon OR $3,
          is_basis_for_new_ski_area = false
-         WHERE key = ANY($3::text[])`,
-        [skiAreaIdJson, isInSkiAreaPolygon, sortedKeys],
+         WHERE key = ANY($4::text[])`,
+        [skiAreaId, assignmentJson, isInSkiAreaPolygon, sortedKeys],
       );
     });
   }

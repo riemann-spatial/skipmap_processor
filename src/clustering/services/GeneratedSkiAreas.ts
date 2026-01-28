@@ -139,7 +139,7 @@ export class GeneratedSkiAreas {
       _key: id,
       id: id,
       type: MapObjectType.SkiArea,
-      skiAreas: [id],
+      skiAreas: [],
       activities: activities,
       geometry: geometry,
       isPolygon: false,
@@ -168,7 +168,7 @@ export class GeneratedSkiAreas {
     await this.database.markObjectsAsPartOfSkiArea(
       id,
       memberObjects.map((obj) => obj._key),
-      false,
+      "proximity",
     );
   }
 }

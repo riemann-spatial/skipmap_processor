@@ -11,9 +11,31 @@ import {
   MapObject,
   MapObjectType,
   RunObject,
+  SkiAreaAssignment,
   SkiAreaObject,
 } from "../MapObject";
 import { ObjectRow, SQLParamValue } from "./types";
+
+/**
+ * Parse ski_areas from database row.
+ * Handles both old format (string[]) and new format (SkiAreaAssignment[])
+ */
+function parseSkiAreas(skiAreas: unknown): SkiAreaAssignment[] {
+  if (!skiAreas || !Array.isArray(skiAreas)) {
+    return [];
+  }
+  return skiAreas.map((item) => {
+    // New format: { skiAreaId, assignedFrom }
+    if (typeof item === "object" && item !== null && "skiAreaId" in item) {
+      return item as SkiAreaAssignment;
+    }
+    // Old format: plain string ID - convert to new format with unknown source
+    if (typeof item === "string") {
+      return { skiAreaId: item, assignedFrom: "proximity" as const };
+    }
+    throw new Error(`Unknown ski area format: ${JSON.stringify(item)}`);
+  });
+}
 
 /**
  * Converts a database row to a MapObject
@@ -27,7 +49,7 @@ export function rowToMapObject(row: ObjectRow): MapObject {
       type: MapObjectType.SkiArea,
       geometry: row.geometry,
       activities: row.activities || [],
-      skiAreas: row.ski_areas || [],
+      skiAreas: parseSkiAreas(row.ski_areas),
       source: row.source as SourceType,
       isPolygon: Boolean(row.is_polygon),
       properties: (row.properties || {}) as SkiAreaProperties,
@@ -40,7 +62,7 @@ export function rowToMapObject(row: ObjectRow): MapObject {
       geometry: row.geometry,
       geometryWithElevations: row.geometry_with_elevations || row.geometry,
       activities: row.activities || [],
-      skiAreas: row.ski_areas || [],
+      skiAreas: parseSkiAreas(row.ski_areas),
       liftType: (row.lift_type || "unknown") as LiftType,
       isInSkiAreaPolygon: Boolean(row.is_in_ski_area_polygon),
       isInSkiAreaSite: Boolean(row.is_in_ski_area_site),
@@ -55,7 +77,7 @@ export function rowToMapObject(row: ObjectRow): MapObject {
       geometry: row.geometry,
       geometryWithElevations: row.geometry_with_elevations || row.geometry,
       activities: row.activities || [],
-      skiAreas: row.ski_areas || [],
+      skiAreas: parseSkiAreas(row.ski_areas),
       isBasisForNewSkiArea: Boolean(row.is_basis_for_new_ski_area),
       isInSkiAreaPolygon: Boolean(row.is_in_ski_area_polygon),
       isInSkiAreaSite: Boolean(row.is_in_ski_area_site),

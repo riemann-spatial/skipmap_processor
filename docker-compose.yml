@@ -24,12 +24,14 @@ services:
       - POSTGRES_USER=dev
       - POSTGRES_PASSWORD=dev
       # - BBOX=[10.74827, 46.81017, 11.08733, 47.00510] # Ötztal large
-      - BBOX=[6.47996, 45.21026, 6.67171, 45.45132]
+      - BBOX=[6.47996, 45.21026, 6.67171, 45.45132] # Savoie, France
       #- BBOX=[11.85573,47.223133,12.119387,47.42013 ] # Innsbruck, Austria
       - OUTPUT_TO_FILES=1
       - OUTPUT_TO_POSTGIS=1
 
       # ===== Elevation Enrichment =====
+      # Set to 0 to disable elevation enrichment (2D geometries, faster processing)
+      - CONFLATE_ELEVATION=1
       # AWS Terrain Tiles (~30m) is used by default - no config needed.
       # Other sources automatically fall back to AWS for coordinates they can't cover.
       - INTERPOLATE_HEIGHT_INFORMATION=true # default: true
@@ -55,6 +57,8 @@ services:
       - COMPILE_NEW=true
       # Set to 1 to enable highway (road/walkway) compilation
       - COMPILE_HIGHWAY=1
+      # Set to 1 to keep polygon ski areas even when >50% of runs/lifts are in site=piste relations
+      - KEEP_LANDUSE_WITH_SITE_OVERLAP=1
 
 volumes:
   node_modules:

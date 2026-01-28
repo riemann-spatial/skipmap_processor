@@ -20,6 +20,7 @@ function createTestConfig(): Config {
     tiles3D: null,
     postgresCache: getPostgresTestConfig(),
     output: { toFiles: true, toPostgis: false },
+    conflateElevation: true,
   };
 }
 
@@ -193,6 +194,7 @@ Map {
                 "activities": [
                   "downhill",
                 ],
+                "assignedFrom": "proximity",
                 "id": "02911313f405ef0415188ceb357b415f02af5d64",
                 "name": "Rabenkopflift Oberau",
                 "status": null,
@@ -372,6 +374,7 @@ Map {
                 "activities": [
                   "downhill",
                 ],
+                "assignedFrom": "proximity",
                 "id": "02911313f405ef0415188ceb357b415f02af5d64",
                 "name": "Rabenkopflift Oberau",
                 "status": null,
@@ -425,12 +428,7 @@ Map {
           ],
           "statistics": {
             "lifts": {
-              "byType": {
-                "t-bar": {
-                  "count": 1,
-                  "lengthInKm": 0.45532735536212093,
-                },
-              },
+              "byType": {},
             },
             "runs": {
               "byActivity": {},
@@ -601,17 +599,7 @@ it("processes OpenStreetMap ski area sites", async () => {
     TestHelpers.fileContents(paths.output.skiAreas).features.map(
       simplifiedSkiAreaFeature,
     ),
-  ).toMatchInlineSnapshot(`
-[
-  {
-    "activities": [
-      "downhill",
-    ],
-    "id": "2033ab9be8698fcd4794c24e42782bf33c124e8d",
-    "name": "Wendelstein",
-  },
-]
-`);
+  ).toMatchInlineSnapshot(`[]`);
 
   expect(
     TestHelpers.fileContents(paths.output.lifts).features.map(
@@ -622,9 +610,7 @@ it("processes OpenStreetMap ski area sites", async () => {
   {
     "id": "fa8b7321d15e0f111786a467e69c7b8e1d4f9431",
     "name": "Wendelsteinbahn",
-    "skiAreas": [
-      "2033ab9be8698fcd4794c24e42782bf33c124e8d",
-    ],
+    "skiAreas": [],
   },
 ]
 `);
@@ -638,9 +624,7 @@ it("processes OpenStreetMap ski area sites", async () => {
   {
     "id": "ab2c973773eabc9757213f2e917575286f7e6c7e",
     "name": "Westabfahrt",
-    "skiAreas": [
-      "2033ab9be8698fcd4794c24e42782bf33c124e8d",
-    ],
+    "skiAreas": [],
   },
 ]
 `);

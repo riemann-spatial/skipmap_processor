@@ -132,11 +132,14 @@ export class SkiAreaClusteringService {
     await performanceMonitor.withOperation(
       "Assign objects in OSM polygon ski areas",
       async () => {
+        const keepLanduseWithSiteOverlap =
+          process.env.KEEP_LANDUSE_WITH_SITE_OVERLAP === "1";
         await this.assignment.assignObjectsToSkiAreas({
           skiArea: {
             onlySource: SourceType.OPENSTREETMAP,
             removeIfNoObjectsFound: true,
-            removeIfSubstantialNumberOfObjectsInSkiAreaSite: true,
+            removeIfSubstantialNumberOfObjectsInSkiAreaSite:
+              !keepLanduseWithSiteOverlap,
           },
           objects: { onlyInPolygon: true },
         });

@@ -163,7 +163,7 @@ export class SkiAreaAugmentation {
 
     if (memberObjects.length === 0 && noSkimapOrgSource) {
       console.log(
-        "Removing OpenStreetMap ski area without associated runs/lifts.",
+        `DISCARDED SKI AREA [NO_RUNS_LIFTS_OSM_ONLY]: name="${skiArea.properties.name || "unnamed"}" | id="${skiArea.properties.id}" | geometry=${skiArea.geometry.type} | sources=${JSON.stringify(skiArea.properties.sources)}`,
       );
       await this.database.removeObject(skiArea._key);
       return;
@@ -218,7 +218,7 @@ export class SkiAreaAugmentation {
             isPlaceholderGeometry(skiArea.geometry)
           ) {
             console.log(
-              "Removing OpenStreetMap ski area as it doesn't have a geometry.",
+              `DISCARDED SKI AREA [PLACEHOLDER_GEOMETRY]: name="${skiArea.properties.name || "unnamed"}" | id="${skiArea.properties.id}" | sources=${JSON.stringify(skiArea.properties.sources)}`,
             );
             await this.database.removeObject(skiArea._key);
           }

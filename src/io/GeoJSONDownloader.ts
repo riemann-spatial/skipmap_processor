@@ -2,6 +2,7 @@ import bboxPolygon from "@turf/bbox-polygon";
 import booleanContains from "@turf/boolean-contains";
 import { readFile, writeFile } from "node:fs/promises";
 import { Readable } from "node:stream";
+import * as JSONStream from "JSONStream";
 import { configFromEnvironment, PostgresConfig } from "../Config";
 import { performanceMonitor } from "../clustering/database/PerformanceMonitor";
 import { InputSkiMapOrgSkiAreaFeature } from "../features/SkiAreaFeature";
@@ -357,19 +358,34 @@ async function _downloadJSON(sourceURL: string): Promise<any> {
     );
   }
 
-  const text = await response.text();
-  const data = JSON.parse(text);
-
-  // Iron out some nasty floating point rounding errors (copied from OSMToGeoJSONConverter)
-  if (data.version) data.version = Math.round(data.version * 1000) / 1000;
-  if (data.elements) {
-    data.elements.forEach(function (element: any) {
-      if (element.lat) element.lat = Math.round(element.lat * 1e12) / 1e12;
-      if (element.lon) element.lon = Math.round(element.lon * 1e12) / 1e12;
-    });
+  if (!response.body) {
+    throw new Error(`Response body is null for URL: ${sourceURL}`);
   }
 
-  return data;
+  // Stream the response through JSONStream to avoid V8 string length limits
+  // for very large responses (>512MB)
+  return await new Promise((resolve, reject) => {
+    const nodeStream = Readable.fromWeb(response.body as any);
+
+    nodeStream
+      .pipe(JSONStream.parse(null))
+      .on("root", function (data: any) {
+        // Iron out some nasty floating point rounding errors (copied from OSMToGeoJSONConverter)
+        if (data.version) data.version = Math.round(data.version * 1000) / 1000;
+        if (data.elements) {
+          data.elements.forEach(function (element: any) {
+            if (element.lat)
+              element.lat = Math.round(element.lat * 1e12) / 1e12;
+            if (element.lon)
+              element.lon = Math.round(element.lon * 1e12) / 1e12;
+          });
+        }
+        resolve(data);
+      })
+      .on("error", function (error: Error) {
+        reject(error);
+      });
+  });
 }
 
 function sleep(ms: number) {

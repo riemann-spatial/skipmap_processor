@@ -48,8 +48,9 @@ function isCompileNewEnabled(): boolean {
 async function createElevationTransform(
   elevationServerConfig: ElevationServerConfig | null,
   postgresConfig: PostgresConfig,
+  conflateElevation: boolean,
 ) {
-  if (!elevationServerConfig) {
+  if (!conflateElevation || !elevationServerConfig) {
     return null;
   }
 
@@ -107,6 +108,7 @@ export default async function prepare(paths: DataPaths, config: Config) {
       const elevationTransform = await createElevationTransform(
         config.elevationServer,
         config.postgresCache,
+        config.conflateElevation,
       );
 
       try {
@@ -192,7 +194,7 @@ export default async function prepare(paths: DataPaths, config: Config) {
     );
   });
 
-  if (config.elevationServer) {
+  if (config.conflateElevation && config.elevationServer) {
     await performanceMonitor.withOperation(
       "Re-applying elevation to ski area points",
       async () => {
@@ -411,10 +413,51 @@ function geoJSONFeatureToOutputFeature(
 async function* readGeoJSONFeaturesAsync(
   filePath: string,
 ): AsyncGenerator<GeoJSON.Feature> {
-  const fs = await import("fs/promises");
-  const content = await fs.readFile(filePath, "utf-8");
-  const geoJSON = JSON.parse(content) as GeoJSON.FeatureCollection;
-  for (const feature of geoJSON.features) {
-    yield feature;
+  const stream = readGeoJSONFeatures(filePath);
+
+  // Convert Node.js readable stream to async generator using events
+  const features: GeoJSON.Feature[] = [];
+  let resolve: (() => void) | null = null;
+  let reject: ((err: Error) => void) | null = null;
+  let done = false;
+  let error: Error | null = null;
+
+  stream.on("data", (feature: GeoJSON.Feature) => {
+    features.push(feature);
+    if (resolve) {
+      resolve();
+      resolve = null;
+    }
+  });
+
+  stream.on("end", () => {
+    done = true;
+    if (resolve) {
+      resolve();
+      resolve = null;
+    }
+  });
+
+  stream.on("error", (err: Error) => {
+    error = err;
+    done = true;
+    if (reject) {
+      reject(err);
+      reject = null;
+    }
+  });
+
+  while (!done || features.length > 0) {
+    if (features.length > 0) {
+      yield features.shift()!;
+    } else if (!done) {
+      await new Promise<void>((res, rej) => {
+        resolve = res;
+        reject = rej;
+      });
+      if (error) {
+        throw error;
+      }
+    }
   }
 }

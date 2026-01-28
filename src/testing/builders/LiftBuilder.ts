@@ -262,7 +262,10 @@ export class LiftBuilder {
       geometry: this.geometry,
       geometryWithElevations: this.geometry,
       activities: [...activities],
-      skiAreas: this.skiAreas.map((s) => s.properties.id),
+      skiAreas: this.skiAreas.map((s) => ({
+        skiAreaId: s.properties.id,
+        assignedFrom: "site" as const,
+      })),
       isInSkiAreaPolygon: false,
       isInSkiAreaSite: this.skiAreas.length > 0,
       liftType: this.liftType,

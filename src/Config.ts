@@ -96,6 +96,8 @@ export interface Config {
   postgresCache: PostgresConfig;
   // Output configuration
   output: OutputConfig;
+  // Whether to add elevation data to geometries (default: true)
+  conflateElevation: boolean;
 }
 
 export function configFromEnvironment(): Config {
@@ -213,6 +215,7 @@ export function configFromEnvironment(): Config {
       toFiles: process.env.OUTPUT_TO_FILES !== "0",
       toPostgis: process.env.OUTPUT_TO_POSTGIS === "1",
     },
+    conflateElevation: process.env.CONFLATE_ELEVATION !== "0",
   };
 }
 

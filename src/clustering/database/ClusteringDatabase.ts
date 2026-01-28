@@ -6,6 +6,7 @@ import {
   MapObject,
   MapObjectType,
   RunObject,
+  SkiAreaAssignmentSource,
   SkiAreaObject,
 } from "../MapObject";
 
@@ -96,11 +97,12 @@ export interface ClusteringDatabase {
 
   /**
    * Mark objects as belonging to a ski area
+   * @param assignedFrom - Source of assignment: "polygon" (landuse), "site" (site=piste), or "proximity"
    */
   markObjectsAsPartOfSkiArea(
     skiAreaId: string,
     objectKeys: string[],
-    isInSkiAreaPolygon: boolean,
+    assignedFrom: SkiAreaAssignmentSource,
   ): Promise<void>;
 
   /**

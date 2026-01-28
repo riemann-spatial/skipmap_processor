@@ -5,9 +5,9 @@ import { PostgresConfig, SnowCoverConfig } from "../Config";
 import { readGeoJSONFeatures } from "../io/GeoJSONReader";
 import toFeatureCollection from "../transforms/FeatureCollection";
 import { mapAsync } from "../transforms/StreamTransforms";
-import { toSkiAreaSummary } from "../transforms/toSkiAreaSummary";
+import { toSkiAreaSummaryWithAssignment } from "../transforms/toSkiAreaSummary";
 import { getSnowCoverHistoryFromCache } from "../utils/snowCoverHistory";
-import { AugmentedMapFeature, RunObject } from "./MapObject";
+import { AugmentedMapFeature, RunObject, SkiAreaAssignment } from "./MapObject";
 import objectToFeature from "./ObjectToFeature";
 import { ClusteringDatabase } from "./database/ClusteringDatabase";
 
@@ -30,8 +30,9 @@ export default async function augmentGeoJSONFeatures(
             return feature;
           }
 
-          // Get ski areas from the map object
-          const skiAreaIds = mapObject.skiAreas;
+          // Get ski areas from the map object (now includes assignment source)
+          const skiAreaAssignments: SkiAreaAssignment[] = mapObject.skiAreas;
+          const skiAreaIds = skiAreaAssignments.map((a) => a.skiAreaId);
           const skiAreas =
             skiAreaIds.length > 0
               ? await database
@@ -39,9 +40,19 @@ export default async function augmentGeoJSONFeatures(
                   .then((cursor) => cursor.all())
               : [];
 
+          // Build a map of ski area ID to assignment source
+          const assignmentMap = new Map(
+            skiAreaAssignments.map((a) => [a.skiAreaId, a.assignedFrom]),
+          );
+
           feature.properties.skiAreas = skiAreas
             .map(objectToFeature)
-            .map(toSkiAreaSummary);
+            .map((skiArea) =>
+              toSkiAreaSummaryWithAssignment(
+                skiArea,
+                assignmentMap.get(skiArea.properties.id) || "proximity",
+              ),
+            );
 
           // Set places from the map object
           if ("properties" in mapObject && "places" in mapObject.properties) {

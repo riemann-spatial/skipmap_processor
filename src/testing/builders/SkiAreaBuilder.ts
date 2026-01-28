@@ -192,7 +192,7 @@ export class SkiAreaBuilder {
       _id: this.id,
       id: this.id,
       type: MapObjectType.SkiArea,
-      skiAreas: [this.id],
+      skiAreas: [],
       activities: this.activities,
       geometry: this.geometry,
       isPolygon:

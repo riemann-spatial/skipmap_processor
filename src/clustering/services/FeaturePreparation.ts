@@ -13,7 +13,13 @@ import {
 } from "openskidata-format";
 import { SnowCoverConfig } from "../../Config";
 import { VIIRSPixelExtractor } from "../../utils/VIIRSPixelExtractor";
-import { DraftLift, DraftRun, DraftSkiArea, MapObjectType } from "../MapObject";
+import {
+  DraftLift,
+  DraftRun,
+  DraftSkiArea,
+  MapObjectType,
+  SkiAreaAssignment,
+} from "../MapObject";
 import { allSkiAreaActivities } from "../SkiAreaClusteringService";
 
 export function prepareSkiArea(feature: SkiAreaFeature): DraftSkiArea {
@@ -44,6 +50,11 @@ export function prepareSkiArea(feature: SkiAreaFeature): DraftSkiArea {
 
 export function prepareLift(feature: LiftFeature): DraftLift {
   const properties = feature.properties;
+  const skiAreaAssignments: SkiAreaAssignment[] =
+    feature.properties.skiAreas.map((skiArea) => ({
+      skiAreaId: skiArea.properties.id,
+      assignedFrom: "site" as const,
+    }));
   return {
     _key: properties.id,
     type: MapObjectType.Lift,
@@ -53,9 +64,7 @@ export function prepareLift(feature: LiftFeature): DraftLift {
       properties["status"] === Status.Operating
         ? [SkiAreaActivity.Downhill]
         : [],
-    skiAreas: feature.properties.skiAreas.map(
-      (skiArea) => skiArea.properties.id,
-    ),
+    skiAreas: skiAreaAssignments,
     isInSkiAreaPolygon: false,
     isInSkiAreaSite: feature.properties.skiAreas.length > 0,
     liftType: properties.liftType,
@@ -102,6 +111,12 @@ export function prepareRun(
       ? viirsExtractor.getGeometryPixelCoordinates(feature.geometry)
       : [];
 
+  const skiAreaAssignments: SkiAreaAssignment[] =
+    feature.properties.skiAreas.map((skiArea) => ({
+      skiAreaId: skiArea.properties.id,
+      assignedFrom: "site" as const,
+    }));
+
   return {
     _key: properties.id,
     type: MapObjectType.Run,
@@ -112,9 +127,7 @@ export function prepareRun(
         properties.uses.includes(RunUse.Nordic)) &&
       activities.some((activity) => allSkiAreaActivities.has(activity)) &&
       feature.properties.skiAreas.length === 0,
-    skiAreas: feature.properties.skiAreas.map(
-      (skiArea) => skiArea.properties.id,
-    ),
+    skiAreas: skiAreaAssignments,
     isInSkiAreaPolygon: false,
     isInSkiAreaSite: isInSkiAreaSite,
     activities: activities,

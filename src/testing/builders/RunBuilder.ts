@@ -282,7 +282,10 @@ export class RunBuilder {
       geometry: this._geometry,
       geometryWithElevations: this._geometry,
       isBasisForNewSkiArea: this._skiAreas.length === 0,
-      skiAreas: this._skiAreas.map((s) => s.properties.id),
+      skiAreas: this._skiAreas.map((s) => ({
+        skiAreaId: s.properties.id,
+        assignedFrom: "site" as const,
+      })),
       isInSkiAreaPolygon: false,
       isInSkiAreaSite: this._skiAreas.length > 0,
       activities,

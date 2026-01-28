@@ -50,6 +50,14 @@ function toNumber(value: unknown): number | null {
   return null;
 }
 
+// Helper to safely extract integer (rounds decimals)
+function toInteger(value: unknown): number | null {
+  if (typeof value === "number") {
+    return Math.round(value);
+  }
+  return null;
+}
+
 // Helper to safely extract string
 function toString(value: unknown): string | null {
   if (typeof value === "string") {
@@ -602,9 +610,9 @@ export class PostGISDataStore {
             toString(p.liftType),
             toString(p.status),
             toBoolean(p.oneway),
-            toNumber(p.occupancy),
-            toNumber(p.capacity),
-            toNumber(p.duration),
+            toInteger(p.occupancy),
+            toInteger(p.capacity),
+            toInteger(p.duration),
             toBoolean(p.bubble),
             toBoolean(p.heating),
             toBoolean(p.detachable),

@@ -69,7 +69,9 @@ export class SkiAreaMerging {
       bufferedContext,
     );
     const otherSkiAreaIDs = new Set(
-      nearbyObjects.flatMap((object) => object.skiAreas),
+      nearbyObjects.flatMap((object) =>
+        object.skiAreas.map((assignment) => assignment.skiAreaId),
+      ),
     );
 
     const otherSkiAreasCursor = await this.database.getSkiAreasByIds(
