@@ -220,11 +220,12 @@ export function configFromEnvironment(): Config {
 }
 
 function getPostgresConfig(): PostgresConfig {
+  const dbname = process.env.DBNAME || "openskidata";
   return {
-    host: "localhost",
-    port: 5432,
-    cacheDatabase: "openskidata_cache",
-    processingDatabase: "openskidata",
+    host: process.env.POSTGRES_HOST || "localhost",
+    port: parseInt(process.env.POSTGRES_PORT || "5432", 10),
+    cacheDatabase: `${dbname}_cache`,
+    processingDatabase: dbname,
     user: process.env.POSTGRES_USER || "postgres",
     password: process.env.POSTGRES_PASSWORD,
     maxConnections: 5,
@@ -237,8 +238,8 @@ function getPostgresConfig(): PostgresConfig {
 export function getPostgresTestConfig(): PostgresConfig {
   const testId = `test_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
   return {
-    host: "localhost",
-    port: 5432,
+    host: process.env.POSTGRES_HOST || "localhost",
+    port: parseInt(process.env.POSTGRES_PORT || "5432", 10),
     cacheDatabase: "openskidata_test",
     processingDatabase: "openskidata_test",
     user: process.env.POSTGRES_USER || "postgres",

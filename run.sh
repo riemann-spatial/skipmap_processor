@@ -29,25 +29,9 @@ else
     echo "Skipping build (production mode and dist exists)"
 fi
 
-# Reset the openskidata database tables
-echo "Resetting openskidata database tables..."
-PGPASSWORD="${POSTGRES_PASSWORD}" psql -h localhost -U "${POSTGRES_USER:-postgres}" -d openskidata << 'EOSQL'
--- Truncate all input tables
-TRUNCATE TABLE input.runs RESTART IDENTITY CASCADE;
-TRUNCATE TABLE input.lifts RESTART IDENTITY CASCADE;
-TRUNCATE TABLE input.ski_areas RESTART IDENTITY CASCADE;
-TRUNCATE TABLE input.ski_area_sites RESTART IDENTITY CASCADE;
-
--- Truncate all output tables
-TRUNCATE TABLE output.runs RESTART IDENTITY CASCADE;
-TRUNCATE TABLE output.lifts RESTART IDENTITY CASCADE;
-TRUNCATE TABLE output.ski_areas RESTART IDENTITY CASCADE;
-
--- Truncate clustering working table
-TRUNCATE TABLE objects RESTART IDENTITY;
-
-EOSQL
-echo "Database tables reset complete."
+# Initialize database (creates/recreates processing database with schema)
+echo "Initializing database..."
+npm run init-database
 
 if [ "$DOWNLOAD" = true ]; then
     echo "Downloading..."

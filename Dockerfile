@@ -28,14 +28,12 @@ FROM node:22-bookworm AS base
 COPY --from=tippecanoe-builder /usr/local/bin/tippecanoe /usr/local/bin/tippecanoe
 COPY --from=tippecanoe-builder /usr/local/bin/tile-join /usr/local/bin/tile-join
 
-# Install system dependencies
+# Install system dependencies (PostgreSQL client only - no server)
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     apt-get update && apt-get install -y \
     libsqlite3-dev \
     sqlite3 \
-    postgresql-15 \
-    postgresql-15-postgis-3 \
     postgresql-client-15 \
     curl \
     unzip
@@ -65,13 +63,8 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     p7zip-full \
     && mkdir -p data /data/dem
 
-# Copy scripts (done early as they rarely change)
-COPY scripts/init-postgres.sh /usr/local/bin/init-postgres.sh
-COPY scripts/startup.sh /usr/local/bin/startup.sh
-RUN chmod +x /usr/local/bin/init-postgres.sh /usr/local/bin/startup.sh
-
-# Start PostgreSQL and run processing pipeline
-CMD ["/usr/local/bin/startup.sh"]
+# Run processing pipeline
+CMD ["./run.sh"]
 
 # Production stage
 FROM base AS production
@@ -79,13 +72,8 @@ FROM base AS production
 # Set production environment
 ENV NODE_ENV=production
 
-# PostgreSQL (inside the container) listens on 5432
-EXPOSE 5432
-
-# Create data directory and copy scripts first (rarely change)
+# Create data directory
 RUN mkdir -p data
-COPY scripts/init-postgres.sh /usr/local/bin/init-postgres.sh
-RUN chmod +x /usr/local/bin/init-postgres.sh
 
 # Copy package files and install dependencies (cache when package.json unchanged)
 COPY package.json package-lock.json ./
@@ -100,5 +88,5 @@ RUN npm run build
 # Clean up dev dependencies after build
 RUN npm prune --omit=dev
 
-# Initialize PostgreSQL as main process
-CMD ["sh", "-c", "exec /usr/local/bin/init-postgres.sh"]
+# Run processing pipeline
+CMD ["./run.sh"]

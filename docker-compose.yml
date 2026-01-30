@@ -8,21 +8,18 @@ services:
       - .:/app
       - node_modules:/app/node_modules
       - dist:/app/dist
-      - postgres_data:/var/lib/postgresql/data
       - shared_data:/data/shared:rw
       - dem_data:/data/dem:rw # rw needed for prepare-dem.sh to write output
       - ~/Downloads:/downloads:ro # Host downloads folder (read-only)
     working_dir: /app
     stdin_open: true
     tty: true
-    ports:
-      # PostgreSQL inside the container listens on 5432.
-      # Host port 5433 is used to avoid clashing with a local Postgres on 5432.
-      # If you want to restrict access to localhost only, change to: "127.0.0.1:5433:5432"
-      - "5433:5432"
     environment:
-      - POSTGRES_USER=dev
-      - POSTGRES_PASSWORD=dev
+      - POSTGRES_HOST=192.168.8.199
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=osm
+      - POSTGRES_PASSWORD=osm
+      - DBNAME=Savoien
       # - BBOX=[10.74827, 46.81017, 11.08733, 47.00510] # Ötztal large
       - BBOX=[6.47996, 45.21026, 6.67171, 45.45132] # Savoie, France
       #- BBOX=[11.85573,47.223133,12.119387,47.42013 ] # Innsbruck, Austria
@@ -53,8 +50,6 @@ services:
 
       - GENERATE_MBTILES=1 # results in mbtiles files for runs, lifts and ski areas, as well as a combined mbtiles file
       - GENERATE_3D_TILES=1 # Generate 3D Tiles tilesets (requires OUTPUT_TO_POSTGIS=1)
-      # Set to false to only start PostgreSQL without running the processing pipeline
-      - COMPILE_NEW=true
       # Set to 1 to enable highway (road/walkway) compilation
       - COMPILE_HIGHWAY=1
       # Set to 1 to keep polygon ski areas even when >50% of runs/lifts are in site=piste relations
@@ -63,7 +58,6 @@ services:
 volumes:
   node_modules:
   dist:
-  postgres_data:
   shared_data:
     external: true
   dem_data:
