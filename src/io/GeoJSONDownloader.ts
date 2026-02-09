@@ -3,7 +3,7 @@ import booleanContains from "@turf/boolean-contains";
 import { readFile, writeFile } from "node:fs/promises";
 import { Readable } from "node:stream";
 import * as JSONStream from "JSONStream";
-import { configFromEnvironment, PostgresConfig } from "../Config";
+import { Config, configFromEnvironment, PostgresConfig } from "../Config";
 import { performanceMonitor } from "../clustering/database/PerformanceMonitor";
 import { InputSkiMapOrgSkiAreaFeature } from "../features/SkiAreaFeature";
 import { Logger } from "../utils/Logger";
@@ -17,6 +17,7 @@ import {
   skiMapSkiAreasURL,
 } from "./DownloadURLs";
 import { InputDataPaths } from "./GeoJSONFiles";
+import { fetchHighwaysFromLocalDB } from "./LocalHighwayProvider";
 import convertOSMFileToGeoJSON, {
   convertOSMToGeoJSON,
 } from "./OSMToGeoJSONConverter";
@@ -66,14 +67,22 @@ export default async function downloadAndConvertToGeoJSON(
         downloadAndStoreSkiMapOrgSkiAreas(paths, bbox, dataStore),
       ];
 
-      // Conditionally download highways if enabled
-      if (process.env.COMPILE_HIGHWAY === "1") {
-        downloads.push(
-          downloadAndStoreHighways(overpassEndpoints, paths, bbox, dataStore),
-        );
-      }
-
       await Promise.all(downloads);
+
+      // Highway download runs after other downloads so ski features are in PostGIS
+      // (needed for local DB buffer query, and serializing also avoids Overpass rate limits)
+      if (process.env.COMPILE_HIGHWAY === "1") {
+        if (config.localOSMDatabase) {
+          await downloadAndStoreHighwaysFromLocalDB(config, paths, dataStore);
+        } else {
+          await downloadAndStoreHighways(
+            overpassEndpoints,
+            paths,
+            bbox,
+            dataStore,
+          );
+        }
+      }
     });
 
     // Log counts
@@ -238,6 +247,21 @@ async function downloadAndStoreHighways(
   await dataStore.saveInputHighways(features);
 
   // Also write to file for backward compatibility
+  await writeFeatureCollection(geoJSON, paths.geoJSON.highways);
+}
+
+async function downloadAndStoreHighwaysFromLocalDB(
+  config: Config,
+  paths: InputDataPaths,
+  dataStore: PostGISDataStore,
+): Promise<void> {
+  Logger.log("Fetching highways from local OSM planet database...");
+  const { features, geoJSON } = await fetchHighwaysFromLocalDB(
+    config.postgresCache,
+    config.localOSMDatabase!,
+  );
+
+  await dataStore.saveInputHighways(features);
   await writeFeatureCollection(geoJSON, paths.geoJSON.highways);
 }
 

@@ -76,6 +76,14 @@ export type OutputConfig = {
   toPostgis: boolean;
 };
 
+export type LocalOSMDatabaseConfig = {
+  host: string;
+  port: number;
+  database: string;
+  user: string;
+  password?: string;
+};
+
 export interface Config {
   elevationServer: ElevationServerConfig | null;
   // Geocoder in https://github.com/komoot/photon format, disk cache TTL in milliseconds
@@ -100,6 +108,8 @@ export interface Config {
   conflateElevation: boolean;
   // Skip processing and jump straight to PostGIS export
   exportOnly: boolean;
+  // Local OSM planet database for highway queries (alternative to Overpass)
+  localOSMDatabase: LocalOSMDatabaseConfig | null;
 }
 
 export function configFromEnvironment(): Config {
@@ -219,6 +229,16 @@ export function configFromEnvironment(): Config {
     },
     conflateElevation: process.env.CONFLATE_ELEVATION !== "0",
     exportOnly: process.env.EXPORT_ONLY === "1",
+    localOSMDatabase:
+      process.env.COMPILE_HIGHWAY_LOCAL === "1"
+        ? {
+            host: process.env.LOCAL_OSM_DB_HOST || "192.168.8.199",
+            port: parseInt(process.env.LOCAL_OSM_DB_PORT || "5432", 10),
+            database: process.env.LOCAL_OSM_DB_NAME || "planetary_schwaben",
+            user: process.env.LOCAL_OSM_DB_USER || "osm",
+            password: process.env.LOCAL_OSM_DB_PASSWORD || "osm",
+          }
+        : null,
   };
 }
 

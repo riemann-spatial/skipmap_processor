@@ -111,6 +111,7 @@ it("correctly associates lifts and runs with ski areas", async () => {
     output: { toFiles: true, toPostgis: false },
     conflateElevation: true,
     exportOnly: false,
+    localOSMDatabase: null,
   };
 
   // Use SQLite database
@@ -219,6 +220,7 @@ it("verifies ski area associations persist through clustering and augmentation",
     output: { toFiles: true, toPostgis: false },
     conflateElevation: true,
     exportOnly: false,
+    localOSMDatabase: null,
   };
 
   // Use SQLite database
