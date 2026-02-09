@@ -1,4 +1,5 @@
 import { SourceType } from "openskidata-format";
+import { Logger } from "../../utils/Logger";
 import {
   ClusteringDatabase,
   SearchContext,
@@ -108,7 +109,7 @@ export class SkiAreaMerging {
     skimapOrgSkiArea: SkiAreaObject,
     skiAreas: SkiAreaObject[],
   ): Promise<void> {
-    console.log(
+    Logger.log(
       `Merging ${JSON.stringify(skimapOrgSkiArea.properties)} into: ${skiAreas
         .map((object) => JSON.stringify(object.properties))
         .join(", ")}`,

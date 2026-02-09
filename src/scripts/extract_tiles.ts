@@ -1,10 +1,11 @@
 import { runCommand } from "../utils/ProcessRunner";
+import { Logger } from "../utils/Logger";
 
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
 
   if (args.length < 2) {
-    console.log("Usage: extract_tiles <input.mbtiles> <output_dir>");
+    Logger.log("Usage: extract_tiles <input.mbtiles> <output_dir>");
     process.exit(1);
   }
 

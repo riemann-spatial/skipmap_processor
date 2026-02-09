@@ -2,6 +2,7 @@ import * as readline from "readline";
 import { Pool } from "pg";
 import { configFromEnvironment } from "../Config";
 import { getPostgresPoolConfig } from "../utils/getPostgresPoolConfig";
+import { Logger } from "../utils/Logger";
 
 // List of known cache types from the codebase
 const CACHE_TYPES = ["elevation", "geocoding", "snow_cover"];
@@ -59,7 +60,7 @@ async function clearCache(pool: Pool, tableName: string): Promise<number> {
 }
 
 async function main() {
-  console.log("🗑️  Cache Clearing Utility\n");
+  Logger.log("Cache Clearing Utility\n");
 
   const config = configFromEnvironment();
   const postgresConfig = config.postgresCache;
@@ -74,15 +75,15 @@ async function main() {
   try {
     // Test connection
     await pool.query("SELECT 1");
-    console.log(
-      `✅ Connected to cache database: ${postgresConfig.cacheDatabase}\n`,
+    Logger.log(
+      `Connected to cache database: ${postgresConfig.cacheDatabase}\n`,
     );
   } catch (error) {
-    console.error(
-      `❌ Failed to connect to cache database: ${postgresConfig.cacheDatabase}`,
+    Logger.error(
+      `Failed to connect to cache database: ${postgresConfig.cacheDatabase}`,
     );
-    console.error("Make sure the database exists and PostgreSQL is running.\n");
-    console.error(`Error: ${error}`);
+    Logger.error("Make sure the database exists and PostgreSQL is running.\n");
+    Logger.error(`Error: ${error}`);
     process.exit(1);
   }
 
@@ -91,38 +92,38 @@ async function main() {
     const tables = await getCacheTables(pool, postgresConfig.tablePrefix);
 
     if (tables.length === 0) {
-      console.log("No cache tables found.");
+      Logger.log("No cache tables found.");
       return;
     }
 
-    console.log(`Found ${tables.length} cache table(s):\n`);
+    Logger.log(`Found ${tables.length} cache table(s):\n`);
 
     // Show table information and prompt for each
     let totalCleared = 0;
     for (const tableName of tables) {
       const size = await getTableSize(pool, tableName);
-      console.log(`📊 ${tableName}: ${size}`);
+      Logger.log(`${tableName}: ${size}`);
 
       const shouldClear = await prompt(`   Clear this cache?`);
 
       if (shouldClear) {
         const rowsDeleted = await clearCache(pool, tableName);
-        console.log(`   ✅ Cleared ${rowsDeleted} rows from ${tableName}\n`);
+        Logger.log(`   Cleared ${rowsDeleted} rows from ${tableName}\n`);
         totalCleared += rowsDeleted;
       } else {
-        console.log(`   ⏭️  Skipped ${tableName}\n`);
+        Logger.log(`   Skipped ${tableName}\n`);
       }
     }
 
     if (totalCleared > 0) {
-      console.log(
-        `\n✨ Done! Cleared ${totalCleared} total rows across all selected caches.`,
+      Logger.log(
+        `\nDone! Cleared ${totalCleared} total rows across all selected caches.`,
       );
     } else {
-      console.log("\n✨ Done! No caches were cleared.");
+      Logger.log("\nDone! No caches were cleared.");
     }
   } catch (error) {
-    console.error("\n❌ Error during cache clearing:", error);
+    Logger.error("\nError during cache clearing:", error);
     process.exit(1);
   } finally {
     await pool.end();

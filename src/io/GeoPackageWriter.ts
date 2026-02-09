@@ -16,6 +16,7 @@ import {
 import { Transform } from "stream";
 import { pipeline } from "stream/promises";
 import { HighwayProperties } from "../features/HighwayFeature";
+import { Logger } from "../utils/Logger";
 import { readGeoJSONFeatures } from "./GeoJSONReader";
 
 // Type-safe column definition
@@ -459,7 +460,7 @@ export class GeoPackageWriter {
       db.run("PRAGMA temp_store = MEMORY");
       db.run("PRAGMA mmap_size = 268435456"); // 256MB
     } catch (error) {
-      console.warn("Warning: Could not apply database optimizations:", error);
+      Logger.warn("Could not apply database optimizations:", error);
     }
   }
 
@@ -740,7 +741,7 @@ export class GeoPackageWriter {
       try {
         this.geoPackage.database.run("VACUUM");
       } catch (error) {
-        console.warn("Warning: Could not vacuum database:", error);
+        Logger.warn("Could not vacuum database:", error);
       }
 
       await this.geoPackage.close();
@@ -895,7 +896,7 @@ class HighwayGeoPackageWriter {
       db.run("PRAGMA temp_store = MEMORY");
       db.run("PRAGMA mmap_size = 268435456");
     } catch (error) {
-      console.warn("Warning: Could not apply database optimizations:", error);
+      Logger.warn("Could not apply database optimizations:", error);
     }
   }
 
@@ -1062,7 +1063,7 @@ class HighwayGeoPackageWriter {
       try {
         this.geoPackage.database.run("VACUUM");
       } catch (error) {
-        console.warn("Warning: Could not vacuum database:", error);
+        Logger.warn("Could not vacuum database:", error);
       }
 
       await this.geoPackage.close();

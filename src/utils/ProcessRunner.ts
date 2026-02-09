@@ -1,4 +1,5 @@
 import { spawn } from "child_process";
+import { Logger } from "./Logger";
 
 export interface RunCommandOptions {
   stdio?: "inherit" | "pipe" | "ignore";
@@ -12,7 +13,7 @@ export async function runCommand(
   options: RunCommandOptions = {},
 ): Promise<void> {
   return new Promise((resolve, reject) => {
-    console.log(`Running: ${command} ${args.join(" ")}`);
+    Logger.log(`Running: ${command} ${args.join(" ")}`);
 
     const process = spawn(command, args, {
       stdio: options.stdio || "inherit",

@@ -5,6 +5,7 @@ import { Region } from "iso3166-2-db";
 import * as ngeohash from "ngeohash";
 import { Place } from "openskidata-format";
 import * as Config from "../Config";
+import { Logger } from "../utils/Logger";
 import { PostgresCache } from "../utils/PostgresCache";
 import { extractPointsAlongGeometry } from "./GeoTransforms";
 import { sortPlaces, uniquePlaces } from "./PlaceUtils";
@@ -152,7 +153,7 @@ export default class Geocoder {
     try {
       cachedResults = await this.diskCache.getMany(geohashes);
     } catch (error) {
-      console.warn(`Local cache batch lookup failed:`, error);
+      Logger.warn(`Local cache batch lookup failed:`, error);
       cachedResults = new Array(geohashes.length).fill(undefined);
     }
 
@@ -203,7 +204,7 @@ export default class Geocoder {
     try {
       return await this.rawGeocodeRemote(geohash);
     } catch (error) {
-      console.log(`Geocoding failed, retrying in ${this.retryDelayMs}ms...`);
+      Logger.log(`Geocoding failed, retrying in ${this.retryDelayMs}ms...`);
       await this.delay(this.retryDelayMs);
       return await this.rawGeocodeRemote(geohash);
     }
@@ -235,13 +236,13 @@ export default class Geocoder {
           },
         });
       } catch (error) {
-        console.error(`Geocoding fetch failed for ${url}:`, error);
+        Logger.error(`Geocoding fetch failed for ${url}:`, error);
         throw error;
       }
 
       if (!fetchResponse.ok) {
         const errorMessage = `Geocoding request failed with status ${fetchResponse.status} for ${url}`;
-        console.error(errorMessage);
+        Logger.error(errorMessage);
         throw new Error(errorMessage);
       }
 
@@ -249,7 +250,7 @@ export default class Geocoder {
       try {
         response = await fetchResponse.json();
       } catch (error) {
-        console.error(`Failed to parse JSON response from ${url}:`, error);
+        Logger.error(`Failed to parse JSON response from ${url}:`, error);
         throw error;
       }
 
@@ -299,7 +300,7 @@ export default class Geocoder {
     }
 
     if (!country) {
-      console.log(
+      Logger.log(
         `Could not find country info for code ${properties.countrycode}`,
       );
       return null;

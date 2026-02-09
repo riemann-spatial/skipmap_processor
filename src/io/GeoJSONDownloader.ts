@@ -6,6 +6,7 @@ import * as JSONStream from "JSONStream";
 import { configFromEnvironment, PostgresConfig } from "../Config";
 import { performanceMonitor } from "../clustering/database/PerformanceMonitor";
 import { InputSkiMapOrgSkiAreaFeature } from "../features/SkiAreaFeature";
+import { Logger } from "../utils/Logger";
 import {
   OSMDownloadConfig,
   highwaysDownloadConfig,
@@ -85,7 +86,7 @@ export default async function downloadAndConvertToGeoJSON(
       const highwaysCount = await dataStore.getInputHighwaysCount();
       countLog += `, ${highwaysCount} highways`;
     }
-    console.log(countLog);
+    Logger.log(countLog);
 
     performanceMonitor.logTimeline();
 
@@ -277,8 +278,8 @@ async function downloadOSMJSON(
   bbox: GeoJSON.BBox | null,
 ): Promise<any> {
   const query = config.query(bbox);
-  console.log("Performing overpass query...");
-  console.log(query);
+  Logger.log("Performing overpass query...");
+  Logger.log(query);
   const urls = endpoints.map((endpoint) =>
     overpassURLForQuery(endpoint, query),
   );
@@ -327,7 +328,7 @@ async function downloadJSONWithFallback(
         return await _downloadJSON(sourceURL);
       } catch (e) {
         lastError = e;
-        console.log(
+        Logger.log(
           "Download failed due to " +
             e +
             ". Will try another Overpass endpoint (or retry after a minute).",

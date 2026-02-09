@@ -1,3 +1,5 @@
+import { Logger } from "../../utils/Logger";
+
 interface PerformanceMetrics {
   operation: string;
   operationId: string;
@@ -32,9 +34,9 @@ export class PerformanceMonitor {
   logTimeline(): void {
     if (!this.isEnabled || this.metrics.length === 0) return;
 
-    console.log("\n" + "=".repeat(80));
-    console.log("PROCESSING TIMELINE");
-    console.log("=".repeat(80));
+    Logger.log("\n" + "=".repeat(80));
+    Logger.log("PROCESSING TIMELINE");
+    Logger.log("=".repeat(80));
 
     // Group metrics by phase
     const phaseMetrics = new Map<string, PerformanceMetrics[]>();
@@ -71,7 +73,7 @@ export class PerformanceMonitor {
       );
       const phaseDuration = phaseEndTime - phaseStartTime;
 
-      console.log(`${phaseName} (${this.formatDuration(phaseDuration)})`);
+      Logger.log(`${phaseName} (${this.formatDuration(phaseDuration)})`);
 
       // Build parent-child map once upfront to avoid repeated filtering
       const childrenMap = new Map<string, PerformanceMetrics[]>();
@@ -132,7 +134,7 @@ export class PerformanceMonitor {
           const { metric, prefix, isLast } = stack.pop()!;
 
           const slowWarning = metric.duration > 30000 ? " ⚠️" : "";
-          console.log(
+          Logger.log(
             `${prefix} ${metric.operation} (${this.formatDuration(metric.duration)})${slowWarning}`,
           );
 
@@ -165,13 +167,13 @@ export class PerformanceMonitor {
         displayOperation(metric, prefix, isLast, childrenMap);
       });
 
-      console.log();
+      Logger.log("");
     }
 
     // Group and display operations that don't belong to any phase
     const otherOperations = this.metrics.filter((m) => !m.phase);
     if (otherOperations.length > 0) {
-      console.log("Other Operations:");
+      Logger.log("Other Operations:");
 
       // Group by operation name
       const operationGroups = new Map<string, PerformanceMetrics[]>();
@@ -192,16 +194,16 @@ export class PerformanceMonitor {
           const slowWarning = avgDuration > 1000 ? " ⚠️" : "";
 
           if (count === 1) {
-            console.log(
+            Logger.log(
               `├─ ${operationName} (${Math.round(avgDuration)}ms)${slowWarning}`,
             );
           } else {
-            console.log(
+            Logger.log(
               `├─ ${operationName}: ${count} operations, ${Math.round(avgDuration)}ms avg${slowWarning}`,
             );
           }
         });
-      console.log();
+      Logger.log("");
     }
 
     // Using reduce() instead of spread operator to avoid stack overflow with large metric arrays
@@ -211,8 +213,8 @@ export class PerformanceMonitor {
           this.metrics.reduce((min, m) => Math.min(min, m.startTime), Infinity)
         : 0;
 
-    console.log(`Total Processing Time: ${this.formatDuration(totalDuration)}`);
-    console.log("=".repeat(80) + "\n");
+    Logger.log(`Total Processing Time: ${this.formatDuration(totalDuration)}`);
+    Logger.log("=".repeat(80) + "\n");
   }
 
   private formatDuration(ms: number): string {
@@ -295,7 +297,7 @@ export class PerformanceMonitor {
     operationName: string,
     operation: () => Promise<T>,
   ): Promise<T> {
-    console.log(operationName);
+    Logger.log(operationName);
     const operationId = `${operationName}_${Date.now()}_${Math.random()}`;
     const parentOperation = this.contextStack[this.contextStack.length - 1];
     const phase = parentOperation
@@ -366,7 +368,7 @@ export class PerformanceMonitor {
 
     const start = this.operationStart.get(operationId);
     if (!start) {
-      console.warn(`No start recorded for operation ${operationId}`);
+      Logger.warn(`No start recorded for operation ${operationId}`);
       return null;
     }
 

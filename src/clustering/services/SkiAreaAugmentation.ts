@@ -12,6 +12,7 @@ import {
 import { skiAreaStatistics } from "../../statistics/SkiAreaStatistics";
 import Geocoder from "../../transforms/Geocoder";
 import { sortPlaces, uniquePlaces } from "../../transforms/PlaceUtils";
+import { Logger } from "../../utils/Logger";
 import { isPlaceholderGeometry } from "../../utils/PlaceholderSiteGeometry";
 import { ClusteringDatabase } from "../database/ClusteringDatabase";
 import { performanceMonitor } from "../database/PerformanceMonitor";
@@ -27,7 +28,7 @@ export class SkiAreaAugmentation {
     postgresConfig: PostgresConfig,
   ): Promise<void> {
     if (!geocoderConfig) {
-      console.log("Skipping run/lift geocoding - no geocoder config provided");
+      Logger.log("Skipping run/lift geocoding - no geocoder config provided");
       return;
     }
 
@@ -70,7 +71,7 @@ export class SkiAreaAugmentation {
             },
           });
         } catch (error) {
-          console.log(
+          Logger.log(
             `Failed geocoding ${object.type} ${object._key}: ${error instanceof Error ? error.message : String(error)}`,
           );
         }
@@ -162,7 +163,7 @@ export class SkiAreaAugmentation {
     );
 
     if (memberObjects.length === 0 && noSkimapOrgSource) {
-      console.log(
+      Logger.log(
         `DISCARDED SKI AREA [NO_RUNS_LIFTS_OSM_ONLY]: name="${skiArea.properties.name || "unnamed"}" | id="${skiArea.properties.id}" | geometry=${skiArea.geometry.type} | sources=${JSON.stringify(skiArea.properties.sources)}`,
       );
       await this.database.removeObject(skiArea._key);
@@ -192,8 +193,8 @@ export class SkiAreaAugmentation {
           updatedProperties.places = [place];
         }
       } catch (error) {
-        console.log(`Failed geocoding ${JSON.stringify(coordinates)}`);
-        console.log(error);
+        Logger.log(`Failed geocoding ${JSON.stringify(coordinates)}`);
+        Logger.log(String(error));
       }
     }
 
@@ -217,7 +218,7 @@ export class SkiAreaAugmentation {
             skiArea.geometry.type === "Point" &&
             isPlaceholderGeometry(skiArea.geometry)
           ) {
-            console.log(
+            Logger.log(
               `DISCARDED SKI AREA [PLACEHOLDER_GEOMETRY]: name="${skiArea.properties.name || "unnamed"}" | id="${skiArea.properties.id}" | sources=${JSON.stringify(skiArea.properties.sources)}`,
             );
             await this.database.removeObject(skiArea._key);
@@ -234,7 +235,7 @@ export class SkiAreaAugmentation {
     snowCoverConfig: SnowCoverConfig | null,
     postgresConfig: PostgresConfig,
   ): Promise<void> {
-    console.log(
+    Logger.log(
       `Augmenting ${featureType} features from ${inputPath} to ${outputPath}`,
     );
 
@@ -249,7 +250,7 @@ export class SkiAreaAugmentation {
   }
 
   async exportSkiAreasGeoJSON(outputPath: string): Promise<void> {
-    console.log(`Exporting ski areas to ${outputPath}`);
+    Logger.log(`Exporting ski areas to ${outputPath}`);
     await exportSkiAreasGeoJSON(outputPath, this.database);
   }
 }

@@ -4,6 +4,7 @@ import * as path from "path";
 import { createInterface } from "readline";
 import { runCommand } from "../utils/ProcessRunner";
 import { GeoPackageMerger } from "../io/GeoPackageMerger";
+import { Logger } from "../utils/Logger";
 
 interface MergeStats {
   geoJsonFiles: number;
@@ -26,28 +27,26 @@ async function mergeGeoPackageWithSQLite(
   const merger = new GeoPackageMerger();
   const result = await merger.mergeGeoPackages(targetPath, sourcePath);
 
-  console.log(
+  Logger.log(
     `  Found ${result.tablesProcessed} data tables to merge (excluding metadata)`,
   );
-  console.log(`  Successfully inserted ${result.rowsInserted} rows`);
+  Logger.log(`  Successfully inserted ${result.rowsInserted} rows`);
 
   if (result.errors.length > 0) {
-    console.warn(`  Encountered ${result.errors.length} errors during merge:`);
-    result.errors.forEach((error) => console.warn(`    ${error}`));
+    Logger.warn(`  Encountered ${result.errors.length} errors during merge:`);
+    result.errors.forEach((error) => Logger.warn(`    ${error}`));
   }
 }
 
 function printUsage(): void {
-  console.log(
-    "Usage: merge_outputs <output_dir> <input_dir1> [input_dir2] ...",
-  );
-  console.log("");
-  console.log("Merges multiple output data directories into a new directory.");
-  console.log("Merges these specific files:");
-  console.log("  - ski_areas.geojson, lifts.geojson, runs.geojson");
-  console.log("  - openskimap.mbtiles");
-  console.log("  - openskidata.gpkg");
-  console.log("  - csv/lifts.csv, csv/runs.csv, csv/ski_areas.csv");
+  Logger.log("Usage: merge_outputs <output_dir> <input_dir1> [input_dir2] ...");
+  Logger.log("");
+  Logger.log("Merges multiple output data directories into a new directory.");
+  Logger.log("Merges these specific files:");
+  Logger.log("  - ski_areas.geojson, lifts.geojson, runs.geojson");
+  Logger.log("  - openskimap.mbtiles");
+  Logger.log("  - openskidata.gpkg");
+  Logger.log("  - csv/lifts.csv, csv/runs.csv, csv/ski_areas.csv");
 }
 
 function validateArguments(): { outputDir: string; inputDirs: string[] } {
@@ -64,7 +63,7 @@ function validateArguments(): { outputDir: string; inputDirs: string[] } {
   // Validate all input directories exist
   for (const inputDir of inputDirs) {
     if (!fs.existsSync(inputDir) || !fs.statSync(inputDir).isDirectory()) {
-      console.error(`Input directory does not exist: ${inputDir}`);
+      Logger.error(`Input directory does not exist: ${inputDir}`);
       process.exit(1);
     }
   }
@@ -100,15 +99,15 @@ async function mergeGeoJsonFiles(
 
   try {
     for (const inputDir of inputDirs) {
-      console.log(`\nProcessing input directory: ${inputDir}`);
+      Logger.log(`\nProcessing input directory: ${inputDir}`);
       const geoJsonFiles = findSpecificFiles(inputDir, SPECIFIC_FILES.geojson);
-      console.log(`Found ${geoJsonFiles.length} GeoJSON files in ${inputDir}`);
+      Logger.log(`Found ${geoJsonFiles.length} GeoJSON files in ${inputDir}`);
 
       for (const inputPath of geoJsonFiles) {
         const relativePath = path.relative(inputDir, inputPath);
         const outputPath = path.join(outputDir, relativePath);
 
-        console.log(
+        Logger.log(
           `Processing GeoJSON: ${relativePath} (${fs.statSync(inputPath).size} bytes)`,
         );
 
@@ -116,7 +115,7 @@ async function mergeGeoJsonFiles(
 
         if (!processedFiles.has(relativePath)) {
           // First file for this path - create new FeatureCollection
-          console.log(`Creating new output file: ${outputPath}`);
+          Logger.log(`Creating new output file: ${outputPath}`);
           fs.writeFileSync(
             outputPath,
             '{"type": "FeatureCollection", "features":[\n',
@@ -124,36 +123,36 @@ async function mergeGeoJsonFiles(
           processedFiles.add(relativePath);
           mergeCount++;
         } else {
-          console.log(`Appending to existing output file: ${outputPath}`);
+          Logger.log(`Appending to existing output file: ${outputPath}`);
         }
 
         // Stream the input file line by line
         try {
           await streamGeoJsonFeatures(inputPath, outputPath);
-          console.log(`✓ Successfully processed: ${relativePath}`);
+          Logger.log(`Successfully processed: ${relativePath}`);
         } catch (error) {
-          console.error(`✗ Failed to process: ${relativePath}`, error);
+          Logger.error(`Failed to process: ${relativePath}`, error);
           throw error;
         }
       }
     }
 
     // Finalize all GeoJSON files by removing the trailing comma and adding closing
-    console.log(`\nFinalizing ${processedFiles.size} GeoJSON files...`);
+    Logger.log(`\nFinalizing ${processedFiles.size} GeoJSON files...`);
     for (const relativePath of Array.from(processedFiles)) {
       const outputPath = path.join(outputDir, relativePath);
-      console.log(`Finalizing: ${relativePath}`);
+      Logger.log(`Finalizing: ${relativePath}`);
 
       try {
         await finalizeGeoJsonFile(outputPath);
-        console.log(`✓ Successfully finalized: ${relativePath}`);
+        Logger.log(`Successfully finalized: ${relativePath}`);
       } catch (error) {
-        console.error(`✗ Failed to finalize: ${relativePath}`, error);
+        Logger.error(`Failed to finalize: ${relativePath}`, error);
         throw error;
       }
     }
   } catch (error) {
-    console.error("Error in mergeGeoJsonFiles:", error);
+    Logger.error("Error in mergeGeoJsonFiles:", error);
     throw error;
   }
 
@@ -190,7 +189,7 @@ async function streamGeoJsonFeatures(
     };
 
     const handleError = (error: Error) => {
-      console.error(`Error processing ${inputPath}:`, error);
+      Logger.error(`Error processing ${inputPath}:`, error);
       cleanup();
       reject(error);
     };
@@ -302,7 +301,7 @@ async function finalizeGeoJsonFile(outputPath: string): Promise<void> {
     };
 
     const handleError = (error: Error) => {
-      console.error(`Error finalizing ${outputPath}:`, error);
+      Logger.error(`Error finalizing ${outputPath}:`, error);
       cleanup();
       reject(error);
     };
@@ -399,7 +398,7 @@ async function mergeCsvFiles(
       const relativePath = path.relative(inputDir, inputPath);
       const outputPath = path.join(outputDir, relativePath);
 
-      console.log(`Processing CSV: ${relativePath}`);
+      Logger.log(`Processing CSV: ${relativePath}`);
 
       ensureDirectoryExists(path.dirname(outputPath));
 
@@ -445,7 +444,7 @@ async function mergeGpkgFiles(
       const relativePath = path.relative(inputDir, inputPath);
       const outputPath = path.join(outputDir, relativePath);
 
-      console.log(`Processing GeoPackage: ${relativePath}`);
+      Logger.log(`Processing GeoPackage: ${relativePath}`);
 
       ensureDirectoryExists(path.dirname(outputPath));
 
@@ -459,7 +458,7 @@ async function mergeGpkgFiles(
         try {
           await mergeGeoPackageWithSQLite(outputPath, inputPath);
         } catch (error) {
-          console.error(`Failed to merge GeoPackage from ${inputPath}:`, error);
+          Logger.error(`Failed to merge GeoPackage from ${inputPath}:`, error);
           throw error;
         }
       }
@@ -483,7 +482,7 @@ async function mergeMbtilesFiles(
       const relativePath = path.relative(inputDir, inputPath);
       const outputPath = path.join(outputDir, relativePath);
 
-      console.log(`Processing MBTiles: ${relativePath}`);
+      Logger.log(`Processing MBTiles: ${relativePath}`);
 
       ensureDirectoryExists(path.dirname(outputPath));
 
@@ -509,7 +508,7 @@ async function mergeMbtilesFiles(
           // Replace original with merged version
           fs.renameSync(tempOutput, outputPath);
         } catch (error) {
-          console.error(`Failed to merge MBTiles from ${inputPath}:`, error);
+          Logger.error(`Failed to merge MBTiles from ${inputPath}:`, error);
           throw error;
         }
       }
@@ -523,7 +522,7 @@ async function main(): Promise<void> {
   try {
     const { outputDir, inputDirs } = validateArguments();
 
-    console.log(`Merging ${inputDirs.length} directories into: ${outputDir}`);
+    Logger.log(`Merging ${inputDirs.length} directories into: ${outputDir}`);
 
     ensureDirectoryExists(outputDir);
 
@@ -535,27 +534,27 @@ async function main(): Promise<void> {
     };
 
     // Merge each file type
-    console.log("\n=== Merging GeoJSON files ===");
+    Logger.log("\n=== Merging GeoJSON files ===");
     stats.geoJsonFiles = await mergeGeoJsonFiles(inputDirs, outputDir);
 
-    console.log("\n=== Merging CSV files ===");
+    Logger.log("\n=== Merging CSV files ===");
     stats.csvFiles = await mergeCsvFiles(inputDirs, outputDir);
 
-    console.log("\n=== Merging GeoPackage files ===");
+    Logger.log("\n=== Merging GeoPackage files ===");
     stats.gpkgFiles = await mergeGpkgFiles(inputDirs, outputDir);
 
-    console.log("\n=== Merging MBTiles files ===");
+    Logger.log("\n=== Merging MBTiles files ===");
     stats.mbtilesFiles = await mergeMbtilesFiles(inputDirs, outputDir);
 
-    console.log("\n=== Merge Complete ===");
-    console.log(`Successfully merged:`);
-    console.log(`  - ${stats.geoJsonFiles} GeoJSON files`);
-    console.log(`  - ${stats.csvFiles} CSV files`);
-    console.log(`  - ${stats.gpkgFiles} GeoPackage files`);
-    console.log(`  - ${stats.mbtilesFiles} MBTiles files`);
-    console.log(`Output directory: ${outputDir}`);
+    Logger.log("\n=== Merge Complete ===");
+    Logger.log(`Successfully merged:`);
+    Logger.log(`  - ${stats.geoJsonFiles} GeoJSON files`);
+    Logger.log(`  - ${stats.csvFiles} CSV files`);
+    Logger.log(`  - ${stats.gpkgFiles} GeoPackage files`);
+    Logger.log(`  - ${stats.mbtilesFiles} MBTiles files`);
+    Logger.log(`Output directory: ${outputDir}`);
   } catch (error) {
-    console.error("Merge failed:", error);
+    Logger.error("Merge failed:", error);
     process.exit(1);
   }
 }

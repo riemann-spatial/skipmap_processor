@@ -1,3 +1,4 @@
+import { Logger } from "../utils/Logger";
 import unique from "../utils/unique";
 
 export function mapOSMNumber(input: string | undefined): number | null {
@@ -75,7 +76,7 @@ export function getOSMFirstValue<Properties extends OSMTags>(
 
   let values = input.split(";");
   if (values.length > 1) {
-    console.log(`Ignoring following values for ${key}: ${input}`);
+    Logger.log(`Ignoring following values for ${key}: ${input}`);
   }
   return values[0];
 }

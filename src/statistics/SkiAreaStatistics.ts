@@ -14,6 +14,7 @@ import {
   RunObject,
 } from "../clustering/MapObject";
 import { PostgresConfig, SnowCoverConfig } from "../Config";
+import { Logger } from "../utils/Logger";
 import { getSnowCoverHistoryFromCache } from "../utils/snowCoverHistory";
 import { VIIRSPixel } from "../utils/VIIRSPixelExtractor";
 
@@ -291,7 +292,7 @@ async function generateSnowCoverStatistics(
       byActivity,
     };
   } catch (error) {
-    console.error("Failed to generate snow cover statistics:", error);
+    Logger.error("Failed to generate snow cover statistics:", error);
     return null;
   }
 }

@@ -1,6 +1,7 @@
 import { Pool } from "pg";
 import { PostgresConfig } from "../Config";
 import { getPostgresPoolConfig } from "./getPostgresPoolConfig";
+import { Logger } from "./Logger";
 
 export interface CacheEntry<T> {
   key: string;
@@ -11,6 +12,12 @@ export interface CacheEntry<T> {
 export interface CacheOptions {
   valueType?: "JSONB" | "REAL";
 }
+
+// PostgreSQL REAL (float4) range limits.
+// Values with absolute value smaller than FLOAT4_MIN_POSITIVE (denormalized)
+// are rejected by PostgreSQL with "out of range for type real".
+const FLOAT4_MIN_POSITIVE = 1.175494e-38;
+const FLOAT4_MAX = 3.4028235e38;
 
 export class PostgresCache<T> {
   private pool: Pool | null = null;
@@ -83,8 +90,8 @@ export class PostgresCache<T> {
         if (result.rows.length === 0) {
           // Create cache database
           await client.query(`CREATE DATABASE "${this.config.cacheDatabase}"`);
-          console.log(
-            `✅ Created persistent cache database: ${this.config.cacheDatabase}`,
+          Logger.log(
+            `Created persistent cache database: ${this.config.cacheDatabase}`,
           );
         }
       } finally {
@@ -124,7 +131,7 @@ export class PostgresCache<T> {
         )
       `);
 
-      console.log(`✅ Created dedicated cache table: ${this.tableName}`);
+      Logger.log(`Created dedicated cache table: ${this.tableName}`);
     } else {
       // Table exists, validate it supports our requirements
       const currentType = tableInfo.rows[0].data_type;
@@ -163,11 +170,30 @@ export class PostgresCache<T> {
   private serializeValue(value: T): T | string {
     if (this.valueType === "REAL") {
       // For REAL type, store number directly (null values are stored as SQL NULL)
-      return value;
+      return this.sanitizeRealValue(value);
     } else {
       // For JSONB type, serialize to JSON string
       return JSON.stringify(value);
     }
+  }
+
+  /**
+   * Sanitize a value to fit within PostgreSQL REAL (float4) range.
+   * Denormalized floats (absolute value between 0 and ~1.175e-38) are
+   * rejected by PostgreSQL, so we clamp them to 0.
+   */
+  private sanitizeRealValue(value: T): T {
+    if (typeof value !== "number" || !Number.isFinite(value)) {
+      return value;
+    }
+    const abs = Math.abs(value);
+    if (abs > 0 && abs < FLOAT4_MIN_POSITIVE) {
+      return 0 as T;
+    }
+    if (abs > FLOAT4_MAX) {
+      return (value > 0 ? FLOAT4_MAX : -FLOAT4_MAX) as T;
+    }
+    return value;
   }
 
   private parseValue(dbValue: T | null): T {
@@ -208,7 +234,7 @@ export class PostgresCache<T> {
       try {
         return this.parseValue(row.value);
       } catch (error) {
-        console.warn(
+        Logger.warn(
           `Failed to parse cached value for key ${key} in cache ${this.cacheType}:`,
           error,
         );
@@ -274,7 +300,7 @@ export class PostgresCache<T> {
         try {
           cachedValues.set(row.key, this.parseValue(row.value));
         } catch (error) {
-          console.warn(
+          Logger.warn(
             `Failed to parse cached value for key ${row.key} in cache ${this.cacheType}:`,
             error,
           );
@@ -311,20 +337,26 @@ export class PostgresCache<T> {
     try {
       const timestamp = Date.now();
 
+      // Sort entries by key to ensure consistent lock ordering and prevent deadlocks
+      // when multiple parallel batches insert into the same table
+      const sortedEntries = Array.from(uniqueEntries.entries()).sort(
+        ([keyA], [keyB]) => keyA.localeCompare(keyB),
+      );
+
       // Build bulk insert query
       const values: (string | number | T)[] = [];
       const placeholders: string[] = [];
 
-      Array.from(uniqueEntries.entries()).forEach(([key, value], i) => {
+      sortedEntries.forEach(([key, value], i) => {
         const offset = i * 3;
         placeholders.push(`($${offset + 1}, $${offset + 2}, $${offset + 3})`);
         values.push(key, this.serializeValue(value), timestamp);
       });
 
       const query = `
-        INSERT INTO ${this.tableName} (key, value, timestamp) 
+        INSERT INTO ${this.tableName} (key, value, timestamp)
         VALUES ${placeholders.join(", ")}
-        ON CONFLICT (key) 
+        ON CONFLICT (key)
         DO UPDATE SET value = EXCLUDED.value, timestamp = EXCLUDED.timestamp
       `;
 
@@ -403,7 +435,7 @@ export class PostgresCache<T> {
     if (this.ttlMs > 0) {
       const deleted = await this.cleanup();
       if (deleted > 0) {
-        console.log(
+        Logger.log(
           `Cleaned up ${deleted} expired entries from ${this.tableName}`,
         );
       }

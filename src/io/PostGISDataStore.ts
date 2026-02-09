@@ -2,6 +2,7 @@ import { Pool, PoolClient } from "pg";
 import { Readable } from "stream";
 import { PostgresConfig } from "../Config";
 import { getPostgresPoolConfig } from "../utils/getPostgresPoolConfig";
+import { Logger } from "../utils/Logger";
 
 export interface InputFeature {
   osm_id: number;
@@ -80,7 +81,7 @@ export class PostGISDataStore {
   async resetInputTables(): Promise<void> {
     const client = await this.pool.connect();
     try {
-      console.log("Resetting input tables in openskidata database...");
+      Logger.log("Resetting input tables in openskidata database...");
       await client.query("TRUNCATE TABLE input.runs RESTART IDENTITY CASCADE");
       await client.query("TRUNCATE TABLE input.lifts RESTART IDENTITY CASCADE");
       await client.query(
@@ -97,7 +98,7 @@ export class PostGISDataStore {
           END IF;
         END $$;
       `);
-      console.log("Input tables reset complete.");
+      Logger.log("Input tables reset complete.");
     } finally {
       client.release();
     }
@@ -106,7 +107,7 @@ export class PostGISDataStore {
   async resetOutputTables(): Promise<void> {
     const client = await this.pool.connect();
     try {
-      console.log("Resetting output tables in openskidata database...");
+      Logger.log("Resetting output tables in openskidata database...");
       await client.query("TRUNCATE TABLE output.runs RESTART IDENTITY CASCADE");
       await client.query(
         "TRUNCATE TABLE output.lifts RESTART IDENTITY CASCADE",
@@ -122,7 +123,7 @@ export class PostGISDataStore {
           END IF;
         END $$;
       `);
-      console.log("Output tables reset complete.");
+      Logger.log("Output tables reset complete.");
     } finally {
       client.release();
     }

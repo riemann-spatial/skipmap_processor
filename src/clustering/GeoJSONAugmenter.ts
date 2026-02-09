@@ -6,6 +6,7 @@ import { readGeoJSONFeatures } from "../io/GeoJSONReader";
 import toFeatureCollection from "../transforms/FeatureCollection";
 import { mapAsync } from "../transforms/StreamTransforms";
 import { toSkiAreaSummaryWithAssignment } from "../transforms/toSkiAreaSummary";
+import { Logger } from "../utils/Logger";
 import { getSnowCoverHistoryFromCache } from "../utils/snowCoverHistory";
 import { AugmentedMapFeature, RunObject, SkiAreaAssignment } from "./MapObject";
 import objectToFeature from "./ObjectToFeature";
@@ -92,7 +93,7 @@ async function generateRunSnowCoverHistory(
       postgresConfig,
     );
   } catch (error) {
-    console.error(
+    Logger.error(
       `Failed to generate snow cover history for run ${runObject._key}:`,
       error,
     );

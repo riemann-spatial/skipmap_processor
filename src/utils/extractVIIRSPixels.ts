@@ -1,4 +1,5 @@
 import { FeatureCollection, Feature } from "geojson";
+import { Logger } from "./Logger";
 import { VIIRSPixelExtractor } from "./VIIRSPixelExtractor";
 
 /**
@@ -22,22 +23,22 @@ export function extractVIIRSPixelsFromGeoJSON(
 
     // Log progress for large collections
     if ((index + 1) % 100 === 0) {
-      console.log(
+      Logger.log(
         `Processed ${index + 1} features, found ${allUniquePixels.size} unique pixels so far`,
       );
     }
   });
 
-  console.log(`Total unique pixels found: ${allUniquePixels.size}`);
+  Logger.log(`Total unique pixels found: ${allUniquePixels.size}`);
 
   // Group by tile for efficient processing
   const pixelsByTile = extractor.groupPixelsByTile(allUniquePixels);
 
-  console.log(
+  Logger.log(
     `Pixels distributed across ${Object.keys(pixelsByTile).length} tiles:`,
   );
   Object.entries(pixelsByTile).forEach(([tile, pixels]) => {
-    console.log(`  ${tile}: ${pixels.length} pixels`);
+    Logger.log(`  ${tile}: ${pixels.length} pixels`);
   });
 
   return pixelsByTile;

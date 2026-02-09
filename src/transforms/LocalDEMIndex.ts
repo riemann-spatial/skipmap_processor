@@ -1,6 +1,7 @@
 import * as fs from "fs";
 import { fromFile, GeoTIFFImage } from "geotiff";
 import * as path from "path";
+import { Logger } from "../utils/Logger";
 
 interface DEMFileBounds {
   filePath: string;
@@ -41,7 +42,7 @@ export class LocalDEMIndex {
     );
 
     if (tifFiles.length === 0) {
-      console.warn(`No GeoTIFF files found in ${this.directory}`);
+      Logger.warn(`No GeoTIFF files found in ${this.directory}`);
     }
 
     for (const tifFile of tifFiles) {
@@ -52,11 +53,11 @@ export class LocalDEMIndex {
           this.files.push(bounds);
         }
       } catch (error) {
-        console.warn(`Failed to index DEM file ${tifFile}: ${error}`);
+        Logger.warn(`Failed to index DEM file ${tifFile}: ${error}`);
       }
     }
 
-    console.log(
+    Logger.log(
       `LocalDEMIndex initialized with ${this.files.length} file(s) from ${this.directory}`,
     );
     this.initialized = true;
@@ -72,7 +73,7 @@ export class LocalDEMIndex {
 
     const bbox = image.getBoundingBox();
     if (!bbox || bbox.length < 4) {
-      console.warn(`Could not extract bounding box from ${filePath}`);
+      Logger.warn(`Could not extract bounding box from ${filePath}`);
       return null;
     }
 
@@ -88,7 +89,7 @@ export class LocalDEMIndex {
       minLng > maxLng ||
       minLat > maxLat
     ) {
-      console.warn(
+      Logger.warn(
         `GeoTIFF ${filePath} has invalid or non-WGS84 bounds: [${minLng}, ${minLat}, ${maxLng}, ${maxLat}]. ` +
           `Ensure the file is reprojected to EPSG:4326.`,
       );

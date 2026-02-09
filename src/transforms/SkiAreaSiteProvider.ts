@@ -6,6 +6,7 @@ import {
   SourceType,
 } from "openskidata-format";
 import { OSMSkiAreaSite } from "../features/SkiAreaFeature";
+import { Logger } from "../utils/Logger";
 import { formatSkiArea, InputSkiAreaType } from "./SkiAreaFormatter";
 
 export class SkiAreaSiteProvider {
@@ -27,7 +28,7 @@ export class SkiAreaSiteProvider {
           this.geoJSONByOSMID.set(id, memberSkiAreas);
         });
       } else {
-        console.log(
+        Logger.log(
           "Failed converting site to ski are: " + JSON.stringify(site),
         );
       }

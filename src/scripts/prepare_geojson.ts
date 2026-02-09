@@ -5,6 +5,7 @@ import {
   InputDataPaths,
 } from "../io/GeoJSONFiles";
 import prepare from "../PrepareGeoJSON";
+import { Logger } from "../utils/Logger";
 
 const config = configFromEnvironment();
 
@@ -16,6 +17,6 @@ prepare(
   },
   config,
 ).catch((reason: any) => {
-  console.log("Failed preparing", reason);
+  Logger.log("Failed preparing", reason);
   process.exit(1);
 });

@@ -2,6 +2,7 @@ import * as path from "path";
 import { performanceMonitor } from "../clustering/database/PerformanceMonitor";
 import { TilesConfig } from "../Config";
 import { CommonGeoJSONPaths } from "../io/GeoJSONFiles";
+import { Logger } from "../utils/Logger";
 import { runCommand } from "../utils/ProcessRunner";
 
 export async function generateTiles(
@@ -9,7 +10,7 @@ export async function generateTiles(
   workingDir: string,
   tilesConfig: TilesConfig,
 ): Promise<void> {
-  console.log("Generating tiles...");
+  Logger.log("Generating tiles...");
 
   // Generate individual layer MBTiles
   await performanceMonitor.withOperation("Generating lift tiles", async () => {
@@ -77,5 +78,5 @@ export async function generateTiles(
     ]);
   });
 
-  console.log("Tiles generation complete");
+  Logger.log("Tiles generation complete");
 }

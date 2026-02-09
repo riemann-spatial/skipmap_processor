@@ -14,6 +14,7 @@ import {
 } from "../Config";
 import { GeometryError } from "../errors";
 import { fetchWithRetry } from "../utils/fetchWithRetry";
+import { Logger } from "../utils/Logger";
 import { PostgresCache } from "../utils/PostgresCache";
 import {
   DEFAULT_AWS_TERRAIN_ZOOM,
@@ -161,7 +162,7 @@ export async function createElevationProcessor(
   await cache.initialize();
 
   if (options.clearCache) {
-    console.log(`Clearing elevation cache table: ${cacheType}_cache`);
+    Logger.log(`Clearing elevation cache table: ${cacheType}_cache`);
     await cache.clear();
   }
 
@@ -176,6 +177,7 @@ export async function createElevationProcessor(
     {
       batch: true,
       maxBatchSize: 1000,
+      cache: false, // Disable in-memory caching - PostgresCache handles persistence
     },
   );
 
@@ -231,7 +233,7 @@ export async function createElevationProcessor(
       const featureName = feature.properties.name || "unnamed";
       const featureType = feature.properties.type;
       const firstCoord = coordinates[0];
-      console.warn(
+      Logger.warn(
         `Partial elevation data for ${featureType} "${featureName}" (id=${featureId}) ` +
           `at [${firstCoord?.[0]?.toFixed(5)}, ${firstCoord?.[1]?.toFixed(5)}]: ` +
           `${missingCoordCount}/${coordinateElevations.length} coordinates missing, ` +
@@ -328,7 +330,7 @@ async function batchLoadElevations(
       // Don't cache errors, return null for this request
       errorCount++;
       throttledLogger.log(result.error, () => {
-        console.warn(`Elevation fetch error: ${result.error}`);
+        Logger.warn(`Elevation fetch error: ${result.error}`);
       });
       results[originalIndex] = null;
     }
@@ -337,7 +339,7 @@ async function batchLoadElevations(
   // Log summary if there were errors
   if (errorCount > 0) {
     throttledLogger.log("elevation-error-summary", () => {
-      console.warn(
+      Logger.warn(
         `Failed to fetch elevation for ${errorCount} of ${fetchedElevations.length} coordinates`,
       );
     });

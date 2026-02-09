@@ -110,6 +110,7 @@ it("correctly associates lifts and runs with ski areas", async () => {
     postgresCache: getPostgresTestConfig(),
     output: { toFiles: true, toPostgis: false },
     conflateElevation: true,
+    exportOnly: false,
   };
 
   // Use SQLite database
@@ -217,6 +218,7 @@ it("verifies ski area associations persist through clustering and augmentation",
     postgresCache: getPostgresTestConfig(),
     output: { toFiles: true, toPostgis: false },
     conflateElevation: true,
+    exportOnly: false,
   };
 
   // Use SQLite database

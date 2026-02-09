@@ -98,6 +98,8 @@ export interface Config {
   output: OutputConfig;
   // Whether to add elevation data to geometries (default: true)
   conflateElevation: boolean;
+  // Skip processing and jump straight to PostGIS export
+  exportOnly: boolean;
 }
 
 export function configFromEnvironment(): Config {
@@ -216,6 +218,7 @@ export function configFromEnvironment(): Config {
       toPostgis: process.env.OUTPUT_TO_POSTGIS === "1",
     },
     conflateElevation: process.env.CONFLATE_ELEVATION !== "0",
+    exportOnly: process.env.EXPORT_ONLY === "1",
   };
 }
 

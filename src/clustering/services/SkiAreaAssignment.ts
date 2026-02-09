@@ -1,6 +1,7 @@
 import { AssertionError } from "assert";
 import * as GeoJSON from "geojson";
 import { SkiAreaActivity, SourceType } from "openskidata-format";
+import { Logger } from "../../utils/Logger";
 import {
   ClusteringDatabase,
   SearchContext,
@@ -145,7 +146,7 @@ export class SkiAreaAssignment {
           const containedSkiMapNames = otherSkiAreas
             .map((sa) => sa.properties.name || "unnamed")
             .join(", ");
-          console.log(
+          Logger.log(
             `DISCARDED SKI AREA [MULTIPLE_SKIMAP_CONTAINED]: name="${skiArea.properties.name || "unnamed"}" | id="${skiArea.properties.id}" | geometry=${skiArea.geometry.type} | containedSkiMapAreas=[${containedSkiMapNames}] | sources=${JSON.stringify(skiArea.properties.sources)}`,
           );
 
@@ -284,7 +285,7 @@ export class SkiAreaAssignment {
       !memberObjects.some((object) => object.type !== MapObjectType.SkiArea);
 
     if (removeDueToNoObjects) {
-      console.log(
+      Logger.log(
         `DISCARDED SKI AREA [NO_OBJECTS]: name="${skiArea.properties.name || "unnamed"}" | id="${skiArea.properties.id}" | geometry=${skiArea.geometry.type} | sources=${JSON.stringify(skiArea.properties.sources)}`,
       );
       await this.database.removeObject(skiArea._key);
@@ -304,7 +305,7 @@ export class SkiAreaAssignment {
       liftsAndRunsInSiteRelation.length / liftsAndRuns.length > 0.5;
 
     if (removeDueToSignificantObjectsInSiteRelation) {
-      console.log(
+      Logger.log(
         `DISCARDED SKI AREA [SITE_RELATION_OVERLAP]: name="${skiArea.properties.name || "unnamed"}" | id="${skiArea.properties.id}" | geometry=${skiArea.geometry.type} | objectsInSite=${liftsAndRunsInSiteRelation.length}/${liftsAndRuns.length} | sources=${JSON.stringify(skiArea.properties.sources)}`,
       );
       await this.database.removeObject(skiArea._key);

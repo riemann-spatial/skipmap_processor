@@ -44,6 +44,7 @@ beforeEach(() => {
     postgresCache: getPostgresTestConfig(),
     output: { toFiles: true, toPostgis: false },
     conflateElevation: true,
+    exportOnly: false,
   };
 });
 

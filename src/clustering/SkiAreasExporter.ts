@@ -4,6 +4,7 @@ import { Readable } from "stream";
 import streamToPromise from "stream-to-promise";
 import toFeatureCollection from "../transforms/FeatureCollection";
 import { map } from "../transforms/StreamTransforms";
+import { Logger } from "../utils/Logger";
 import { SkiAreaObject } from "./MapObject";
 import objectToFeature from "./ObjectToFeature";
 import { ClusteringDatabase } from "./database/ClusteringDatabase";
@@ -34,7 +35,7 @@ function asyncIterableToStream(
       iterator
         .next()
         .catch((_: any) => {
-          console.log("Failed reading from database, stopping.");
+          Logger.log("Failed reading from database, stopping.");
           readable.push(null);
           return undefined as any;
         })

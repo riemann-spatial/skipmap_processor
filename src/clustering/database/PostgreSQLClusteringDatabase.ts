@@ -1,6 +1,7 @@
 import { Pool, PoolClient } from "pg";
 import { PostgresConfig } from "../../Config";
 import { getPostgresPoolConfig } from "../../utils/getPostgresPoolConfig";
+import { Logger } from "../../utils/Logger";
 import {
   LiftObject,
   MapObject,
@@ -56,9 +57,7 @@ export class PostgreSQLClusteringDatabase implements ClusteringDatabase {
       const client = await this.pool.connect();
       await client.query("SELECT 1");
       client.release();
-      console.log(
-        `✅ PostgreSQL connection established to ${this.databaseName}`,
-      );
+      Logger.log(`PostgreSQL connection established to ${this.databaseName}`);
     } catch (error) {
       throw new Error(
         `Failed to connect to PostgreSQL database ${this.databaseName}: ${error}`,
@@ -70,15 +69,15 @@ export class PostgreSQLClusteringDatabase implements ClusteringDatabase {
     await this.truncateObjectsTable();
     await this.createIndexes();
 
-    console.log(
-      `✅ PostgreSQL clustering database initialized: ${this.databaseName}`,
+    Logger.log(
+      `PostgreSQL clustering database initialized: ${this.databaseName}`,
     );
   }
 
   private async truncateObjectsTable(): Promise<void> {
     const pool = this.ensureInitialized();
     await pool.query("TRUNCATE TABLE objects RESTART IDENTITY");
-    console.log("✅ Truncated objects table for fresh clustering");
+    Logger.log("Truncated objects table for fresh clustering");
   }
 
   async close(): Promise<void> {
@@ -88,17 +87,17 @@ export class PostgreSQLClusteringDatabase implements ClusteringDatabase {
 
         const activeConnections = this.pool.totalCount - this.pool.idleCount;
         if (activeConnections > 0) {
-          console.warn(
-            `Warning: ${activeConnections} active connections during close, waiting for completion...`,
+          Logger.warn(
+            `${activeConnections} active connections during close, waiting for completion...`,
           );
           await new Promise((resolve) => setTimeout(resolve, 1000));
         }
 
         await this.pool.end();
         this.pool = null;
-        console.log(`✅ Closed connection pool to ${this.databaseName}`);
+        Logger.log(`Closed connection pool to ${this.databaseName}`);
       } catch (error) {
-        console.warn(`Warning during pool cleanup: ${error}`);
+        Logger.warn(`Pool cleanup issue: ${error}`);
         this.pool = null;
       }
     }
@@ -122,7 +121,7 @@ export class PostgreSQLClusteringDatabase implements ClusteringDatabase {
       const result = await client.query(query, params);
       return result.rows as T;
     } catch (error) {
-      console.error(`Query failed: ${query.substring(0, 100)}...`, error);
+      Logger.error(`Query failed: ${query.substring(0, 100)}...`, error);
       throw error;
     } finally {
       client.release();
@@ -149,7 +148,7 @@ export class PostgreSQLClusteringDatabase implements ClusteringDatabase {
         const pgError = error as PostgresError;
         if (pgError.code === "40P01" && attempt < maxRetries - 1) {
           attempt++;
-          console.warn(
+          Logger.warn(
             `Deadlock detected, retrying (attempt ${attempt}/${maxRetries})`,
           );
           await new Promise((resolve) =>
@@ -183,26 +182,26 @@ export class PostgreSQLClusteringDatabase implements ClusteringDatabase {
   private async enablePostGIS(): Promise<void> {
     const pool = this.ensureInitialized();
     await pool.query("CREATE EXTENSION IF NOT EXISTS postgis");
-    console.log("✅ PostGIS extension enabled");
+    Logger.log("PostGIS extension enabled");
   }
 
   private async createTables(): Promise<void> {
     const pool = this.ensureInitialized();
     await pool.query(SQL.CREATE_OBJECTS_TABLE);
-    console.log("✅ Created objects table");
+    Logger.log("Created objects table");
   }
 
   async createIndexes(): Promise<void> {
     const pool = this.ensureInitialized();
 
     await pool.query(SQL.CREATE_SPATIAL_INDEXES);
-    console.log("✅ Created spatial index on geometry column");
+    Logger.log("Created spatial index on geometry column");
 
     await pool.query(SQL.CREATE_GEOGRAPHY_INDEX);
-    console.log("✅ Created spatial index on geography cast");
+    Logger.log("Created spatial index on geography cast");
 
     await pool.query(SQL.CREATE_COMPOSITE_INDEXES);
-    console.log("✅ Created optimized composite indexes");
+    Logger.log("Created optimized composite indexes");
   }
 
   async saveObject(object: MapObject): Promise<void> {
@@ -296,7 +295,7 @@ export class PostgreSQLClusteringDatabase implements ClusteringDatabase {
             [JSON.stringify(updatedSkiAreas), obj.key],
           );
         } catch (error) {
-          console.warn(
+          Logger.warn(
             `Failed to clean up ski area association for object ${obj.key}:`,
             error,
           );
@@ -603,7 +602,7 @@ export class PostgreSQLClusteringDatabase implements ClusteringDatabase {
 
       return rows[0].geometry;
     } catch (error) {
-      console.warn(
+      Logger.warn(
         `Failed to get derived geometry for ski area ${skiAreaId}, querying ski area geometry directly:`,
         error,
       );

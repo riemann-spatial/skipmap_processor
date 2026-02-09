@@ -1,5 +1,6 @@
 import Database from "better-sqlite3";
 import { GeoPackageAPI, RTreeIndex } from "@ngageoint/geopackage";
+import { Logger } from "../utils/Logger";
 
 export interface MergeResult {
   tablesProcessed: number;
@@ -208,7 +209,7 @@ export class GeoPackageMerger {
             }
           } catch (error) {
             // Log the error but continue with other rows
-            console.warn(
+            Logger.warn(
               `Failed to insert row into ${tableName}:`,
               error instanceof Error ? error.message : error,
             );
@@ -369,7 +370,7 @@ export class GeoPackageMerger {
       }
     } catch (error) {
       // Don't fail the entire operation for metadata issues
-      console.warn(
+      Logger.warn(
         `Failed to update GeoPackage metadata for table ${tableName}:`,
         error instanceof Error ? error.message : error,
       );

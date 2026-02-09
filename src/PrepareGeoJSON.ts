@@ -24,6 +24,7 @@ import { formatRun } from "./transforms/RunFormatter";
 import { InputSkiAreaType, formatSkiArea } from "./transforms/SkiAreaFormatter";
 import { generate3DTiles } from "./transforms/Tiles3DGenerator";
 import { generateTiles } from "./transforms/TilesGenerator";
+import { Logger } from "./utils/Logger";
 import { runCommand } from "./utils/ProcessRunner";
 
 import { performanceMonitor } from "./clustering/database/PerformanceMonitor";
@@ -94,227 +95,260 @@ async function fetchSnowCoverIfEnabled(
 }
 
 export default async function prepare(paths: DataPaths, config: Config) {
-  await performanceMonitor.withPhase(
-    "Phase 2: GeoJSON Preparation",
-    async () => {
-      const siteProvider = new SkiAreaSiteProvider();
+  if (config.exportOnly) {
+    Logger.log("EXPORT_ONLY mode: skipping processing, jumping to export");
 
-      // Create shared elevation processor for ski areas, runs, and lifts
-      const elevationTransform = await createElevationTransform(
-        config.elevationServer,
-        config.postgresCache,
-        config.conflateElevation,
-      );
+    // Validate that required output files exist
+    const requiredFiles = [
+      paths.output.skiAreas,
+      paths.output.runs,
+      paths.output.lifts,
+    ];
+    for (const filePath of requiredFiles) {
+      if (!existsSync(filePath)) {
+        throw new Error(
+          `EXPORT_ONLY mode: required output file not found: ${filePath}`,
+        );
+      }
+    }
+  }
 
-      try {
-        await performanceMonitor.withOperation(
-          "Processing ski areas",
-          async () => {
-            siteProvider.loadSites(paths.input.osmJSON.skiAreaSites);
+  if (!config.exportOnly) {
+    await performanceMonitor.withPhase(
+      "Phase 2: GeoJSON Preparation",
+      async () => {
+        const siteProvider = new SkiAreaSiteProvider();
 
-            await StreamToPromise(
-              merge([
-                readGeoJSONFeatures(paths.input.geoJSON.skiAreas).pipe(
-                  flatMap(
-                    formatSkiArea(InputSkiAreaType.OPENSTREETMAP_LANDUSE),
-                  ),
-                ),
-                Readable.from(siteProvider.getGeoJSONSites()),
-                readGeoJSONFeatures(paths.input.geoJSON.skiMapSkiAreas).pipe(
-                  flatMap(formatSkiArea(InputSkiAreaType.SKIMAP_ORG)),
-                ),
-              ])
-                .pipe(mapAsync(elevationTransform?.transform || null, 10))
-                .pipe(toFeatureCollection())
-                .pipe(createWriteStream(paths.intermediate.skiAreas)),
-            );
-          },
+        // Create shared elevation processor for ski areas, runs, and lifts
+        const elevationTransform = await createElevationTransform(
+          config.elevationServer,
+          config.postgresCache,
+          config.conflateElevation,
         );
 
-        await performanceMonitor.withOperation("Processing runs", async () => {
-          await StreamToPromise(
-            readGeoJSONFeatures(paths.input.geoJSON.runs)
-              .pipe(flatMapArray(formatRun))
-              .pipe(map(addSkiAreaSites(siteProvider)))
-              .pipe(accumulate(new RunNormalizerAccumulator()))
-              .pipe(mapAsync(elevationTransform?.transform || null, 10))
-              .pipe(toFeatureCollection())
-              .pipe(createWriteStream(paths.intermediate.runs)),
-          );
-        });
-
-        // Process snow cover data after runs are written
-        await fetchSnowCoverIfEnabled(config, paths.intermediate.runs);
-
-        await performanceMonitor.withOperation("Processing lifts", async () => {
-          await StreamToPromise(
-            readGeoJSONFeatures(paths.input.geoJSON.lifts)
-              .pipe(flatMap(formatLift))
-              .pipe(map(addSkiAreaSites(siteProvider)))
-              .pipe(mapAsync(elevationTransform?.transform || null, 10))
-              .pipe(toFeatureCollection())
-              .pipe(createWriteStream(paths.intermediate.lifts)),
-          );
-        });
-
-        // Process highways if enabled
-        if (process.env.COMPILE_HIGHWAY === "1") {
+        try {
           await performanceMonitor.withOperation(
-            "Processing highways",
+            "Processing ski areas",
             async () => {
+              siteProvider.loadSites(paths.input.osmJSON.skiAreaSites);
+
               await StreamToPromise(
-                readGeoJSONFeatures(paths.input.geoJSON.highways)
-                  .pipe(flatMapArray(formatHighway))
+                merge([
+                  readGeoJSONFeatures(paths.input.geoJSON.skiAreas).pipe(
+                    flatMap(
+                      formatSkiArea(InputSkiAreaType.OPENSTREETMAP_LANDUSE),
+                    ),
+                  ),
+                  Readable.from(siteProvider.getGeoJSONSites()),
+                  readGeoJSONFeatures(paths.input.geoJSON.skiMapSkiAreas).pipe(
+                    flatMap(formatSkiArea(InputSkiAreaType.SKIMAP_ORG)),
+                  ),
+                ])
                   .pipe(mapAsync(elevationTransform?.transform || null, 10))
                   .pipe(toFeatureCollection())
-                  .pipe(createWriteStream(paths.intermediate.highways)),
+                  .pipe(createWriteStream(paths.intermediate.skiAreas)),
               );
             },
           );
-        }
-      } finally {
-        if (elevationTransform) {
-          await elevationTransform.processor.close();
-        }
-      }
-    },
-  );
 
-  await performanceMonitor.withPhase("Phase 3: Clustering", async () => {
-    await clusterSkiAreas(
-      paths.intermediate,
-      paths.output,
-      config,
-      process.env.COMPILE_HIGHWAY === "1",
-    );
-  });
-
-  if (config.conflateElevation && config.elevationServer) {
-    await performanceMonitor.withOperation(
-      "Re-applying elevation to ski area points",
-      async () => {
-        const elevationServerConfig = config.elevationServer;
-        if (!elevationServerConfig) {
-          return;
-        }
-        const processor = await createElevationProcessor(
-          elevationServerConfig,
-          config.postgresCache,
-          { clearCache: false },
-        );
-        try {
-          const tempPath = `${paths.output.skiAreas}.tmp`;
-          await StreamToPromise(
-            readGeoJSONFeatures(paths.output.skiAreas)
-              .pipe(
-                mapAsync(async (feature) => {
-                  const skiArea = feature as SkiAreaFeature;
-                  if (
-                    skiArea.geometry.type !== "Point" &&
-                    skiArea.geometry.type !== "MultiPolygon"
-                  ) {
-                    return skiArea;
-                  }
-                  return await processor.processFeature(skiArea);
-                }, 10),
-              )
-              .pipe(toFeatureCollection())
-              .pipe(createWriteStream(tempPath)),
+          await performanceMonitor.withOperation(
+            "Processing runs",
+            async () => {
+              await StreamToPromise(
+                readGeoJSONFeatures(paths.input.geoJSON.runs)
+                  .pipe(flatMapArray(formatRun))
+                  .pipe(map(addSkiAreaSites(siteProvider)))
+                  .pipe(accumulate(new RunNormalizerAccumulator()))
+                  .pipe(mapAsync(elevationTransform?.transform || null, 10))
+                  .pipe(toFeatureCollection())
+                  .pipe(createWriteStream(paths.intermediate.runs)),
+              );
+            },
           );
-          renameSync(tempPath, paths.output.skiAreas);
+
+          // Process snow cover data after runs are written
+          await fetchSnowCoverIfEnabled(config, paths.intermediate.runs);
+
+          await performanceMonitor.withOperation(
+            "Processing lifts",
+            async () => {
+              await StreamToPromise(
+                readGeoJSONFeatures(paths.input.geoJSON.lifts)
+                  .pipe(flatMap(formatLift))
+                  .pipe(map(addSkiAreaSites(siteProvider)))
+                  .pipe(mapAsync(elevationTransform?.transform || null, 10))
+                  .pipe(toFeatureCollection())
+                  .pipe(createWriteStream(paths.intermediate.lifts)),
+              );
+            },
+          );
+
+          // Process highways if enabled
+          if (process.env.COMPILE_HIGHWAY === "1") {
+            await performanceMonitor.withOperation(
+              "Processing highways",
+              async () => {
+                await StreamToPromise(
+                  readGeoJSONFeatures(paths.input.geoJSON.highways)
+                    .pipe(flatMapArray(formatHighway))
+                    .pipe(mapAsync(elevationTransform?.transform || null, 10))
+                    .pipe(toFeatureCollection())
+                    .pipe(createWriteStream(paths.intermediate.highways)),
+                );
+              },
+            );
+          }
         } finally {
-          await processor.close();
+          if (elevationTransform) {
+            await elevationTransform.processor.close();
+          }
         }
       },
     );
-  }
+
+    await performanceMonitor.withPhase("Phase 3: Clustering", async () => {
+      await clusterSkiAreas(
+        paths.intermediate,
+        paths.output,
+        config,
+        process.env.COMPILE_HIGHWAY === "1",
+      );
+    });
+
+    if (config.conflateElevation && config.elevationServer) {
+      await performanceMonitor.withOperation(
+        "Re-applying elevation to ski area points",
+        async () => {
+          const elevationServerConfig = config.elevationServer;
+          if (!elevationServerConfig) {
+            return;
+          }
+          const processor = await createElevationProcessor(
+            elevationServerConfig,
+            config.postgresCache,
+            { clearCache: false },
+          );
+          try {
+            const tempPath = `${paths.output.skiAreas}.tmp`;
+            await StreamToPromise(
+              readGeoJSONFeatures(paths.output.skiAreas)
+                .pipe(
+                  mapAsync(async (feature) => {
+                    const skiArea = feature as SkiAreaFeature;
+                    if (
+                      skiArea.geometry.type !== "Point" &&
+                      skiArea.geometry.type !== "MultiPolygon"
+                    ) {
+                      return skiArea;
+                    }
+                    return await processor.processFeature(skiArea);
+                  }, 10),
+                )
+                .pipe(toFeatureCollection())
+                .pipe(createWriteStream(tempPath)),
+            );
+            renameSync(tempPath, paths.output.skiAreas);
+          } finally {
+            await processor.close();
+          }
+        },
+      );
+    }
+  } // end if (!config.exportOnly)
 
   await performanceMonitor.withPhase("Phase 4: Output Generation", async () => {
-    await performanceMonitor.withOperation(
-      "Exporting to Mapbox GeoJSON",
-      async () => {
+    if (!config.exportOnly) {
+      await performanceMonitor.withOperation(
+        "Exporting to Mapbox GeoJSON",
+        async () => {
+          await Promise.all(
+            [FeatureType.SkiArea, FeatureType.Lift, FeatureType.Run].map(
+              (type) => {
+                return StreamToPromise(
+                  readGeoJSONFeatures(getPath(paths.output, type))
+                    .pipe(flatMap(MapboxGLFormatter.formatter(type)))
+                    .pipe(toFeatureCollection())
+                    .pipe(
+                      createWriteStream(getPath(paths.output.mapboxGL, type)),
+                    ),
+                );
+              },
+            ),
+          );
+        },
+      );
+
+      await performanceMonitor.withOperation("Exporting to CSV", async () => {
         await Promise.all(
           [FeatureType.SkiArea, FeatureType.Lift, FeatureType.Run].map(
             (type) => {
               return StreamToPromise(
                 readGeoJSONFeatures(getPath(paths.output, type))
-                  .pipe(flatMap(MapboxGLFormatter.formatter(type)))
-                  .pipe(toFeatureCollection())
+                  .pipe(flatMap(CSVFormatter.formatter(type)))
+                  .pipe(CSVFormatter.createCSVWriteStream(type))
                   .pipe(
-                    createWriteStream(getPath(paths.output.mapboxGL, type)),
+                    createWriteStream(
+                      join(paths.output.csv, CSVFormatter.getCSVFilename(type)),
+                    ),
                   ),
               );
             },
           ),
         );
-      },
-    );
-
-    await performanceMonitor.withOperation("Exporting to CSV", async () => {
-      await Promise.all(
-        [FeatureType.SkiArea, FeatureType.Lift, FeatureType.Run].map((type) => {
-          return StreamToPromise(
-            readGeoJSONFeatures(getPath(paths.output, type))
-              .pipe(flatMap(CSVFormatter.formatter(type)))
-              .pipe(CSVFormatter.createCSVWriteStream(type))
-              .pipe(
-                createWriteStream(
-                  join(paths.output.csv, CSVFormatter.getCSVFilename(type)),
-                ),
-              ),
-          );
-        }),
-      );
-    });
-
-    await performanceMonitor.withOperation("Creating GeoPackage", async () => {
-      // Delete existing GeoPackage if it exists
-      if (existsSync(paths.output.geoPackage)) {
-        unlinkSync(paths.output.geoPackage);
-        console.log("Removed existing GeoPackage file");
-      }
-
-      // Create a single GeoPackage with all three layers
-      const layerMap = {
-        [FeatureType.SkiArea]: "ski_areas",
-        [FeatureType.Lift]: "lifts",
-        [FeatureType.Run]: "runs",
-      };
-
-      for (const type of [
-        FeatureType.SkiArea,
-        FeatureType.Lift,
-        FeatureType.Run,
-      ]) {
-        await convertGeoJSONToGeoPackage(
-          getPath(paths.output, type),
-          paths.output.geoPackage,
-          layerMap[type],
-          type,
-        );
-      }
-
-      // Add highways if enabled
-      if (process.env.COMPILE_HIGHWAY === "1") {
-        await convertHighwayGeoJSONToGeoPackage(
-          paths.output.highways,
-          paths.output.geoPackage,
-          "highways",
-        );
-      }
-    });
-
-    // Generate tiles if enabled
-    const tilesConfig = config.tiles;
-    if (tilesConfig) {
-      await performanceMonitor.withOperation("Generating tiles", async () => {
-        await generateTiles(
-          paths.output.mapboxGL,
-          config.workingDir,
-          tilesConfig,
-        );
       });
-    }
+
+      await performanceMonitor.withOperation(
+        "Creating GeoPackage",
+        async () => {
+          // Delete existing GeoPackage if it exists
+          if (existsSync(paths.output.geoPackage)) {
+            unlinkSync(paths.output.geoPackage);
+            Logger.log("Removed existing GeoPackage file");
+          }
+
+          // Create a single GeoPackage with all three layers
+          const layerMap = {
+            [FeatureType.SkiArea]: "ski_areas",
+            [FeatureType.Lift]: "lifts",
+            [FeatureType.Run]: "runs",
+          };
+
+          for (const type of [
+            FeatureType.SkiArea,
+            FeatureType.Lift,
+            FeatureType.Run,
+          ]) {
+            await convertGeoJSONToGeoPackage(
+              getPath(paths.output, type),
+              paths.output.geoPackage,
+              layerMap[type],
+              type,
+            );
+          }
+
+          // Add highways if enabled
+          if (process.env.COMPILE_HIGHWAY === "1") {
+            await convertHighwayGeoJSONToGeoPackage(
+              paths.output.highways,
+              paths.output.geoPackage,
+              "highways",
+            );
+          }
+        },
+      );
+
+      // Generate tiles if enabled
+      const tilesConfig = config.tiles;
+      if (tilesConfig) {
+        await performanceMonitor.withOperation("Generating tiles", async () => {
+          await generateTiles(
+            paths.output.mapboxGL,
+            config.workingDir,
+            tilesConfig,
+          );
+        });
+      }
+    } // end if (!config.exportOnly) within Phase 4
 
     // Export to PostGIS if enabled
     if (config.output.toPostgis) {
@@ -327,49 +361,37 @@ export default async function prepare(paths: DataPaths, config: Config) {
           await dataStore.resetOutputTables();
 
           // Export ski areas
-          const skiAreaFeatures: OutputFeature[] = [];
-          for await (const feature of readGeoJSONFeaturesAsync(
+          const skiAreaCount = await exportFeaturesToPostGIS(
             paths.output.skiAreas,
-          )) {
-            skiAreaFeatures.push(geoJSONFeatureToOutputFeature(feature));
-          }
-          await dataStore.saveOutputSkiAreas(skiAreaFeatures);
-          console.log(
-            `Exported ${skiAreaFeatures.length} ski areas to PostGIS`,
+            (batch) => dataStore.saveOutputSkiAreas(batch),
+            "Ski areas",
           );
+          Logger.log(`Exported ${skiAreaCount} ski areas to PostGIS`);
 
           // Export runs
-          const runFeatures: OutputFeature[] = [];
-          for await (const feature of readGeoJSONFeaturesAsync(
+          const runCount = await exportFeaturesToPostGIS(
             paths.output.runs,
-          )) {
-            runFeatures.push(geoJSONFeatureToOutputFeature(feature));
-          }
-          await dataStore.saveOutputRuns(runFeatures);
-          console.log(`Exported ${runFeatures.length} runs to PostGIS`);
+            (batch) => dataStore.saveOutputRuns(batch),
+            "Runs",
+          );
+          Logger.log(`Exported ${runCount} runs to PostGIS`);
 
           // Export lifts
-          const liftFeatures: OutputFeature[] = [];
-          for await (const feature of readGeoJSONFeaturesAsync(
+          const liftCount = await exportFeaturesToPostGIS(
             paths.output.lifts,
-          )) {
-            liftFeatures.push(geoJSONFeatureToOutputFeature(feature));
-          }
-          await dataStore.saveOutputLifts(liftFeatures);
-          console.log(`Exported ${liftFeatures.length} lifts to PostGIS`);
+            (batch) => dataStore.saveOutputLifts(batch),
+            "Lifts",
+          );
+          Logger.log(`Exported ${liftCount} lifts to PostGIS`);
 
           // Export highways if enabled
           if (process.env.COMPILE_HIGHWAY === "1") {
-            const highwayFeatures: OutputFeature[] = [];
-            for await (const feature of readGeoJSONFeaturesAsync(
+            const highwayCount = await exportFeaturesToPostGIS(
               paths.output.highways,
-            )) {
-              highwayFeatures.push(geoJSONFeatureToOutputFeature(feature));
-            }
-            await dataStore.saveOutputHighways(highwayFeatures);
-            console.log(
-              `Exported ${highwayFeatures.length} highways to PostGIS`,
+              (batch) => dataStore.saveOutputHighways(batch),
+              "Highways",
             );
+            Logger.log(`Exported ${highwayCount} highways to PostGIS`);
           }
 
           await dataStore.createOutput2DViews();
@@ -389,7 +411,7 @@ export default async function prepare(paths: DataPaths, config: Config) {
     }
   });
 
-  console.log("Done preparing");
+  Logger.log("Done preparing");
 
   performanceMonitor.logTimeline();
 }
@@ -405,12 +427,39 @@ function geoJSONFeatureToOutputFeature(
   };
 }
 
+async function exportFeaturesToPostGIS(
+  filePath: string,
+  saveBatch: (features: OutputFeature[]) => Promise<void>,
+  label: string,
+): Promise<number> {
+  const batchSize = 10000;
+  let batch: OutputFeature[] = [];
+  let total = 0;
+
+  for await (const feature of readGeoJSONFeaturesAsync(filePath)) {
+    batch.push(geoJSONFeatureToOutputFeature(feature));
+    if (batch.length >= batchSize) {
+      await saveBatch(batch);
+      total += batch.length;
+      batch = [];
+      Logger.log(`  ${label}: exported ${total} so far`);
+    }
+  }
+  if (batch.length > 0) {
+    await saveBatch(batch);
+    total += batch.length;
+  }
+  return total;
+}
+
 async function* readGeoJSONFeaturesAsync(
   filePath: string,
 ): AsyncGenerator<GeoJSON.Feature> {
   const stream = readGeoJSONFeatures(filePath);
 
-  // Convert Node.js readable stream to async generator using events
+  // Convert Node.js readable stream to async generator with backpressure.
+  // We pause the stream after each data event so features don't accumulate
+  // in memory while the consumer is busy (e.g. awaiting a DB write).
   const features: GeoJSON.Feature[] = [];
   let resolve: (() => void) | null = null;
   let reject: ((err: Error) => void) | null = null;
@@ -419,6 +468,7 @@ async function* readGeoJSONFeaturesAsync(
 
   stream.on("data", (feature: GeoJSON.Feature) => {
     features.push(feature);
+    stream.pause();
     if (resolve) {
       resolve();
       resolve = null;
@@ -445,7 +495,11 @@ async function* readGeoJSONFeaturesAsync(
   while (!done || features.length > 0) {
     if (features.length > 0) {
       yield features.shift()!;
+      if (features.length === 0 && !done) {
+        stream.resume();
+      }
     } else if (!done) {
+      stream.resume();
       await new Promise<void>((res, rej) => {
         resolve = res;
         reject = rej;

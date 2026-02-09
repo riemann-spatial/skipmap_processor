@@ -7,6 +7,7 @@ import {
   Status,
 } from "openskidata-format";
 import { v4 as uuid } from "uuid";
+import { Logger } from "../../utils/Logger";
 import {
   ClusteringDatabase,
   SearchContext,
@@ -34,15 +35,15 @@ export class GeneratedSkiAreas {
     let unassignedRun: MapObject | null;
     while ((unassignedRun = await this.database.getNextUnassignedRun())) {
       if (this.lastProcessedRunKey === unassignedRun._key) {
-        console.log(
-          `WARNING: Run ${unassignedRun._key} selected again - marking as processed to prevent infinite loop`,
+        Logger.warn(
+          `Run ${unassignedRun._key} selected again - marking as processed to prevent infinite loop`,
         );
         try {
           await this.database.updateObject(unassignedRun._key, {
             isBasisForNewSkiArea: false,
           });
         } catch (updateException) {
-          console.log(
+          Logger.log(
             "Failed to mark repeated run as processed:",
             updateException,
           );
@@ -58,13 +59,13 @@ export class GeneratedSkiAreas {
           skiAreaGeometryFn,
         );
       } catch (exception) {
-        console.log("Processing unassigned run failed.", exception);
+        Logger.log("Processing unassigned run failed.", exception);
         try {
           await this.database.updateObject(unassignedRun._key, {
             isBasisForNewSkiArea: false,
           });
         } catch (updateException) {
-          console.log(
+          Logger.log(
             "Failed to mark run as processed after error:",
             updateException,
           );
@@ -161,7 +162,7 @@ export class GeneratedSkiAreas {
     try {
       await this.database.saveObject(draftSkiArea as MapObject);
     } catch (exception) {
-      console.log("Failed saving ski area", exception);
+      Logger.log("Failed saving ski area", exception);
       throw exception;
     }
 

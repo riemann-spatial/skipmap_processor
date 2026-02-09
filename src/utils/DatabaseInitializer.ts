@@ -1,6 +1,7 @@
 import { Pool, PoolClient } from "pg";
 import { PostgresConfig } from "../Config";
 import { getPostgresPoolConfig } from "./getPostgresPoolConfig";
+import { Logger } from "./Logger";
 
 export class DatabaseInitializer {
   private config: PostgresConfig;
@@ -15,7 +16,7 @@ export class DatabaseInitializer {
       const client = await pool.connect();
       await client.query("SELECT 1");
       client.release();
-      console.log(
+      Logger.log(
         `Successfully connected to PostgreSQL at ${this.config.host}:${this.config.port}`,
       );
     } finally {
@@ -38,20 +39,20 @@ export class DatabaseInitializer {
 
         if (result.rows.length > 0) {
           if (dropIfExists) {
-            console.log(`Dropping existing database: ${dbName}`);
+            Logger.log(`Dropping existing database: ${dbName}`);
             await client.query(
               `SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1 AND pid <> pg_backend_pid()`,
               [dbName],
             );
             await client.query(`DROP DATABASE "${dbName}"`);
-            console.log(`Creating database: ${dbName}`);
+            Logger.log(`Creating database: ${dbName}`);
             await client.query(`CREATE DATABASE "${dbName}"`);
           } else {
-            console.log(`Database ${dbName} already exists, skipping creation`);
+            Logger.log(`Database ${dbName} already exists, skipping creation`);
             return;
           }
         } else {
-          console.log(`Creating database: ${dbName}`);
+          Logger.log(`Creating database: ${dbName}`);
           await client.query(`CREATE DATABASE "${dbName}"`);
         }
       } finally {
@@ -68,7 +69,7 @@ export class DatabaseInitializer {
       const client = await pool.connect();
       try {
         await client.query("CREATE EXTENSION IF NOT EXISTS postgis");
-        console.log(`Enabled PostGIS extension on ${dbName}`);
+        Logger.log(`Enabled PostGIS extension on ${dbName}`);
       } finally {
         client.release();
       }
@@ -88,7 +89,7 @@ export class DatabaseInitializer {
         await this.createInputTables(client);
         await this.createOutputTables(client);
         await this.createClusteringTable(client);
-        console.log(
+        Logger.log(
           `Created schemas and tables in ${this.config.processingDatabase}`,
         );
       } finally {

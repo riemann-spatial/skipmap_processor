@@ -23,6 +23,7 @@ import { readGeoJSONFeatures } from "../io/GeoJSONReader";
 import toFeatureCollection from "../transforms/FeatureCollection";
 import { getPoints, getPositions } from "../transforms/GeoTransforms";
 import { map } from "../transforms/StreamTransforms";
+import { Logger } from "../utils/Logger";
 import { ClusteringDatabase } from "./database/ClusteringDatabase";
 import { performanceMonitor } from "./database/PerformanceMonitor";
 import { MapObject } from "./MapObject";
@@ -266,7 +267,7 @@ export class SkiAreaClusteringService {
             skiAreaPolygons.push(skiArea);
           }
         }
-        console.log(
+        Logger.log(
           `Loaded ${skiAreaPolygons.length} ski areas with polygon geometries`,
         );
 
@@ -309,7 +310,7 @@ export class SkiAreaClusteringService {
             .pipe(createWriteStream(highwaysOutputPath)),
         );
 
-        console.log(`Finished associating highways with ski areas`);
+        Logger.log(`Finished associating highways with ski areas`);
       },
     );
   }

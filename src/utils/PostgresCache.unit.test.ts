@@ -295,6 +295,62 @@ describe("PostgresCache", () => {
     });
   });
 
+  describe("REAL value type", () => {
+    let realCache: PostgresCache<number | null>;
+
+    beforeEach(async () => {
+      realCache = new PostgresCache<number | null>(
+        "test_real_cache",
+        getPostgresTestConfig(),
+        0,
+        { valueType: "REAL" },
+      );
+      await realCache.initialize();
+    });
+
+    afterEach(async () => {
+      await realCache.clear();
+      await realCache.close();
+    });
+
+    it("should store and retrieve normal elevation values", async () => {
+      await realCache.set("normal", 1234.5);
+      expect(await realCache.get("normal")).toBeCloseTo(1234.5, 0);
+    });
+
+    it("should store and retrieve zero", async () => {
+      await realCache.set("zero", 0);
+      expect(await realCache.get("zero")).toBe(0);
+    });
+
+    it("should store and retrieve null", async () => {
+      await realCache.set("null_val", null);
+      expect(await realCache.get("null_val")).toBeNull();
+    });
+
+    it("should clamp denormalized float to zero", async () => {
+      // This value (2.29e-46) caused "out of range for type real" in production
+      await realCache.set("denorm", 2.294694592072385e-46);
+      expect(await realCache.get("denorm")).toBe(0);
+    });
+
+    it("should clamp negative denormalized float to zero", async () => {
+      await realCache.set("neg_denorm", -1e-45);
+      expect(await realCache.get("neg_denorm")).toBe(0);
+    });
+
+    it("should handle denormalized values in setMany", async () => {
+      await realCache.setMany([
+        { key: "a", value: 500.0 },
+        { key: "b", value: 2.294694592072385e-46 },
+        { key: "c", value: 1200.3 },
+      ]);
+      expect(await realCache.get("a")).toBeCloseTo(500.0, 0);
+      expect(await realCache.get("b")).toBe(0);
+      expect(await realCache.get("c")).toBeCloseTo(1200.3, 0);
+    });
+  });
+
   describe("multiple initialization", () => {
     it("should handle multiple initialization calls gracefully", async () => {
       const multiInitCache = new PostgresCache(

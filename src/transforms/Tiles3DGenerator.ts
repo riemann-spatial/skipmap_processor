@@ -3,6 +3,7 @@ import * as path from "path";
 import { performanceMonitor } from "../clustering/database/PerformanceMonitor";
 import { Pool } from "pg";
 import { PostgresConfig, Tiles3DConfig } from "../Config";
+import { Logger } from "../utils/Logger";
 import { runCommand } from "../utils/ProcessRunner";
 import { getPostgresPoolConfig } from "../utils/getPostgresPoolConfig";
 
@@ -84,7 +85,7 @@ export async function generate3DTiles(
   postgresConfig: PostgresConfig,
   tiles3DConfig: Tiles3DConfig,
 ): Promise<void> {
-  console.log("Generating 3D Tiles...");
+  Logger.log("Generating 3D Tiles...");
 
   const pool = new Pool(
     getPostgresPoolConfig(postgresConfig.processingDatabase, postgresConfig),
@@ -122,8 +123,11 @@ export async function generate3DTiles(
                AND GeometryType(${geometryColumn}) NOT IN ('POINT', 'MULTIPOINT')`,
           );
 
+          // ST_MakeValid can produce GeometryCollections from invalid geometries.
+          // pg2b3dm doesn't support GeometryCollection, so we extract the
+          // relevant geometry type: polygons (type 3) for ski areas,
+          // lines (type 2) for runs and lifts.
           if (layer.name === "ski_areas") {
-            // Ski areas may be GeometryCollections - extract only polygons
             await pool.query(
               `UPDATE ${tilesTableName}
                SET ${geometryColumn} = ST_CollectionExtract(
@@ -132,12 +136,17 @@ export async function generate3DTiles(
                )`,
             );
           } else {
-            // Runs and lifts - just make valid
             await pool.query(
               `UPDATE ${tilesTableName}
                SET ${geometryColumn} = ST_MakeValid(${geometryColumn})`,
             );
           }
+
+          // Remove GeometryCollections that pg2b3dm cannot handle
+          await pool.query(
+            `DELETE FROM ${tilesTableName}
+             WHERE GeometryType(${geometryColumn}) = 'GEOMETRYCOLLECTION'`,
+          );
 
           await pool.query(
             `DELETE FROM ${tilesTableName}
@@ -181,7 +190,7 @@ export async function generate3DTiles(
           );
           const featureCount = countResult.rows[0]?.count ?? 0;
           if (featureCount === 0) {
-            console.log(
+            Logger.log(
               `Skipping 3D tiles for ${layer.name} (no non-point geometries)`,
             );
             await dropTilesTableOrView(pool, schema, `${table}_3dtiles`);
@@ -232,5 +241,5 @@ export async function generate3DTiles(
     fs.cpSync(tiles3DConfig.outputDir, sharedTilesDir, { recursive: true });
   }
 
-  console.log("3D Tiles generation complete");
+  Logger.log("3D Tiles generation complete");
 }

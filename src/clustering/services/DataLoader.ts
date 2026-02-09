@@ -3,6 +3,7 @@ import StreamToPromise from "stream-to-promise";
 import { SnowCoverConfig } from "../../Config";
 import { readGeoJSONFeatures } from "../../io/GeoJSONReader";
 import { mapAsync } from "../../transforms/StreamTransforms";
+import { Logger } from "../../utils/Logger";
 import { VIIRSPixelExtractor } from "../../utils/VIIRSPixelExtractor";
 import { ClusteringDatabase } from "../database/ClusteringDatabase";
 import { performanceMonitor } from "../database/PerformanceMonitor";
@@ -53,7 +54,7 @@ export class DataLoader {
           const preparedObject = prepare(feature as T) as MapObject;
           await this.database.saveObject(preparedObject);
         } catch (e) {
-          console.error(
+          Logger.error(
             "Failed loading feature " + JSON.stringify(feature),
             e instanceof Error ? e.message : String(e),
           );
