@@ -40,6 +40,7 @@ import {
   accumulate,
   flatMap,
   flatMapArray,
+  logProgress,
   map,
   mapAsync,
 } from "./transforms/StreamTransforms";
@@ -132,6 +133,17 @@ export default async function prepare(paths: DataPaths, config: Config) {
         );
 
         try {
+          // Query total feature counts for progress reporting
+          const [skiAreaCount, runsCount, liftsCount, highwaysCount] =
+            await Promise.all([
+              dataStore.getInputSkiAreasCount(),
+              dataStore.getInputRunsCount(),
+              dataStore.getInputLiftsCount(),
+              process.env.COMPILE_HIGHWAY === "1"
+                ? dataStore.getInputHighwaysCount()
+                : Promise.resolve(0),
+            ]);
+
           await performanceMonitor.withOperation(
             "Processing ski areas",
             async () => {
@@ -152,6 +164,7 @@ export default async function prepare(paths: DataPaths, config: Config) {
                   ).pipe(flatMap(formatSkiArea(InputSkiAreaType.SKIMAP_ORG))),
                 ])
                   .pipe(mapAsync(elevationTransform?.transform || null, 30))
+                  .pipe(logProgress("Ski areas", skiAreaCount))
                   .pipe(toFeatureCollection())
                   .pipe(createWriteStream(paths.intermediate.skiAreas)),
               );
@@ -171,6 +184,7 @@ export default async function prepare(paths: DataPaths, config: Config) {
                     .pipe(map(addSkiAreaSites(siteProvider)))
                     .pipe(accumulate(new RunNormalizerAccumulator()))
                     .pipe(mapAsync(elevationTransform?.transform || null, 30))
+                    .pipe(logProgress("Runs", runsCount))
                     .pipe(toFeatureCollection())
                     .pipe(createWriteStream(paths.intermediate.runs)),
                 );
@@ -188,6 +202,7 @@ export default async function prepare(paths: DataPaths, config: Config) {
                   .pipe(flatMap(formatLift))
                   .pipe(map(addSkiAreaSites(siteProvider)))
                   .pipe(mapAsync(elevationTransform?.transform || null, 30))
+                  .pipe(logProgress("Lifts", liftsCount))
                   .pipe(toFeatureCollection())
                   .pipe(createWriteStream(paths.intermediate.lifts)),
               );
@@ -206,6 +221,7 @@ export default async function prepare(paths: DataPaths, config: Config) {
                     asyncGeneratorToStream(dataStore.streamInputHighways())
                       .pipe(flatMapArray(formatHighway))
                       .pipe(mapAsync(elevationTransform?.transform || null, 30))
+                      .pipe(logProgress("Highways", highwaysCount))
                       .pipe(toFeatureCollection())
                       .pipe(createWriteStream(paths.intermediate.highways)),
                   );
@@ -261,6 +277,7 @@ export default async function prepare(paths: DataPaths, config: Config) {
                     return await processor.processFeature(skiArea);
                   }, 30),
                 )
+                .pipe(logProgress("Ski areas (re-elevation)", null))
                 .pipe(toFeatureCollection())
                 .pipe(createWriteStream(tempPath)),
             );
