@@ -176,7 +176,7 @@ export async function createElevationProcessor(
     },
     {
       batch: true,
-      maxBatchSize: 1000,
+      maxBatchSize: 5000,
       cache: false, // Disable in-memory caching - PostgresCache handles persistence
     },
   );
