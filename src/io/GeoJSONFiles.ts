@@ -10,54 +10,6 @@ export interface CommonGeoJSONPaths {
   readonly highways?: string;
 }
 
-export class InputDataPaths {
-  readonly osmJSON: OSMJSONInputPaths;
-  readonly geoJSON: GeoJSONInputPaths;
-
-  constructor(folder: string) {
-    this.osmJSON = new OSMJSONInputPaths(folder);
-    this.geoJSON = new GeoJSONInputPaths(folder);
-  }
-}
-
-export class OSMJSONInputPaths {
-  readonly skiAreas: string;
-  readonly skiAreaSites: string; // note: sites are represented with OSM JSON.
-  readonly runs: string;
-  readonly lifts: string;
-  readonly highways: string;
-
-  constructor(folder: string) {
-    if (!existsSync(folder)) {
-      mkdirSync(folder);
-    }
-    this.skiAreas = join(folder, "input_ski_areas.osmjson");
-    this.skiAreaSites = join(folder, "input_ski_area_sites.osmjson");
-    this.runs = join(folder, "input_runs.osmjson");
-    this.lifts = join(folder, "input_lifts.osmjson");
-    this.highways = join(folder, "input_highways.osmjson");
-  }
-}
-
-export class GeoJSONInputPaths {
-  readonly skiMapSkiAreas: string;
-  readonly skiAreas: string;
-  readonly runs: string;
-  readonly lifts: string;
-  readonly highways: string;
-
-  constructor(folder: string) {
-    if (!existsSync(folder)) {
-      mkdirSync(folder);
-    }
-    this.skiMapSkiAreas = join(folder, "input_skimap_ski_areas.geojson");
-    this.skiAreas = join(folder, "input_openstreetmap_ski_areas.geojson");
-    this.runs = join(folder, "input_runs.geojson");
-    this.lifts = join(folder, "input_lifts.geojson");
-    this.highways = join(folder, "input_highways.geojson");
-  }
-}
-
 export class GeoJSONIntermediatePaths {
   readonly skiAreas: string;
   readonly runs: string;
@@ -108,7 +60,6 @@ export class GeoJSONOutputPaths implements CommonGeoJSONPaths {
   }
 }
 export interface DataPaths {
-  input: InputDataPaths;
   intermediate: GeoJSONIntermediatePaths;
   output: GeoJSONOutputPaths;
 }

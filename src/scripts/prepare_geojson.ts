@@ -2,7 +2,6 @@ import { configFromEnvironment } from "../Config";
 import {
   GeoJSONIntermediatePaths,
   GeoJSONOutputPaths,
-  InputDataPaths,
 } from "../io/GeoJSONFiles";
 import prepare from "../PrepareGeoJSON";
 import { Logger } from "../utils/Logger";
@@ -11,7 +10,6 @@ const config = configFromEnvironment();
 
 prepare(
   {
-    input: new InputDataPaths(config.workingDir),
     intermediate: new GeoJSONIntermediatePaths(config.workingDir),
     output: new GeoJSONOutputPaths(config.outputDir),
   },

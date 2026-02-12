@@ -1,5 +1,6 @@
 import { SkiAreaActivity } from "openskidata-format";
 import { Config, getPostgresTestConfig } from "./Config";
+import { PostGISDataStore } from "./io/PostGISDataStore";
 import prepare from "./PrepareGeoJSON";
 import * as TestHelpers from "./TestHelpers";
 import {
@@ -28,22 +29,23 @@ function createTestConfig(): Config {
 
 it("produces empty output for empty input", async () => {
   const paths = TestHelpers.getFilePaths();
-  TestHelpers.mockInputFiles(
-    {
-      skiMapSkiAreas: [],
-      openStreetMapSkiAreas: [],
-      openStreetMapSkiAreaSites: [],
-      lifts: [],
-      runs: [],
-    },
-    paths.input,
-  );
+  const config = createTestConfig();
+  const dataStore = new PostGISDataStore(config.postgresCache);
+  try {
+    await TestHelpers.mockInputFiles(
+      {
+        skiMapSkiAreas: [],
+        openStreetMapSkiAreas: [],
+        openStreetMapSkiAreaSites: [],
+        lifts: [],
+        runs: [],
+      },
+      dataStore,
+    );
 
-  await prepare(paths, createTestConfig());
+    await prepare(paths, config);
 
-  // await new Promise((resolve) => setTimeout(resolve, 1000));
-
-  expect(TestHelpers.contents(paths.output)).toMatchInlineSnapshot(`
+    expect(TestHelpers.contents(paths.output)).toMatchInlineSnapshot(`
     Map {
       "output/lifts.geojson" => {
         "features": [],
@@ -71,86 +73,92 @@ it("produces empty output for empty input", async () => {
       },
     }
   `);
+  } finally {
+    await dataStore.close();
+  }
 });
 
 it("produces output for simple input", async () => {
   const paths = TestHelpers.getFilePaths();
-  TestHelpers.mockInputFiles(
-    {
-      skiMapSkiAreas: [
-        {
-          type: "Feature",
-          properties: {
-            id: "13666",
-            name: "Rabenkopflift Oberau",
-            status: null,
-            activities: [SkiAreaActivity.Downhill],
-            scalerank: 1,
-            official_website: null,
-          },
-          geometry: {
-            type: "Point",
-            coordinates: [11.122066084534, 47.557111836837],
-          },
-        },
-      ],
-      openStreetMapSkiAreas: [],
-      openStreetMapSkiAreaSites: [],
-      lifts: [
-        {
-          type: "Feature",
-          id: "way/227407273",
-          properties: {
-            type: "way",
-            id: 227407273,
-            tags: {
-              aerialway: "t-bar",
-              name: "Skilift Oberau",
+  const config = createTestConfig();
+  const dataStore = new PostGISDataStore(config.postgresCache);
+  try {
+    await TestHelpers.mockInputFiles(
+      {
+        skiMapSkiAreas: [
+          {
+            type: "Feature",
+            properties: {
+              id: "13666",
+              name: "Rabenkopflift Oberau",
+              status: null,
+              activities: [SkiAreaActivity.Downhill],
+              scalerank: 1,
+              official_website: null,
+            },
+            geometry: {
+              type: "Point",
+              coordinates: [11.122066084534, 47.557111836837],
             },
           },
-          geometry: {
-            type: "LineString",
-            coordinates: [
-              [11.1223444, 47.5572422],
-              [11.1164297, 47.5581563],
-            ],
-          },
-        },
-      ],
-      runs: [
-        {
-          type: "Feature",
-          id: "way/227407268",
-          properties: {
-            type: "way",
-            id: 227407268,
-            tags: {
-              name: "Oberauer Skiabfahrt",
-              "piste:difficulty": "easy",
-              "piste:type": "downhill",
-              sport: "skiing",
+        ],
+        openStreetMapSkiAreas: [],
+        openStreetMapSkiAreaSites: [],
+        lifts: [
+          {
+            type: "Feature",
+            id: "way/227407273",
+            properties: {
+              type: "way",
+              id: 227407273,
+              tags: {
+                aerialway: "t-bar",
+                name: "Skilift Oberau",
+              },
             },
-          },
-          geometry: {
-            type: "Polygon",
-            coordinates: [
-              [
-                [11.1164229, 47.558125],
-                [11.1163655, 47.5579742],
-                [11.1171866, 47.5576413],
-                [11.1164229, 47.558125],
+            geometry: {
+              type: "LineString",
+              coordinates: [
+                [11.1223444, 47.5572422],
+                [11.1164297, 47.5581563],
               ],
-            ],
+            },
           },
-        },
-      ],
-    },
-    paths.input,
-  );
+        ],
+        runs: [
+          {
+            type: "Feature",
+            id: "way/227407268",
+            properties: {
+              type: "way",
+              id: 227407268,
+              tags: {
+                name: "Oberauer Skiabfahrt",
+                "piste:difficulty": "easy",
+                "piste:type": "downhill",
+                sport: "skiing",
+              },
+            },
+            geometry: {
+              type: "Polygon",
+              coordinates: [
+                [
+                  [11.1164229, 47.558125],
+                  [11.1163655, 47.5579742],
+                  [11.1171866, 47.5576413],
+                  [11.1164229, 47.558125],
+                ],
+              ],
+            },
+          },
+        ],
+      },
+      dataStore,
+    );
 
-  await prepare(paths, createTestConfig());
+    await prepare(paths, config);
 
-  expect(TestHelpers.contents(paths.output)).toMatchInlineSnapshot(`
+    expect(TestHelpers.contents(paths.output)).toMatchInlineSnapshot(`
 Map {
   "output/lifts.geojson" => {
     "features": [
@@ -163,7 +171,7 @@ Map {
             ],
             [
               11.1164297,
-              47.558156300000014,
+              47.55815630000001,
             ],
           ],
           "type": "LineString",
@@ -175,7 +183,7 @@ Map {
           "detachable": null,
           "duration": null,
           "heating": null,
-          "id": "4d07b91974c5a5b3a0ad9e1928c0a6d433c5093b",
+          "id": "e8e4058e82dd25aa12b4673471dd754a8b319f5c",
           "liftType": "t-bar",
           "name": "Skilift Oberau",
           "occupancy": null,
@@ -187,8 +195,8 @@ Map {
             {
               "geometry": {
                 "coordinates": [
-                  11.122066084534,
-                  47.557111836837,
+                  11.122066085,
+                  47.557111837,
                 ],
                 "type": "Point",
               },
@@ -197,7 +205,7 @@ Map {
                   "downhill",
                 ],
                 "assignedFrom": "proximity",
-                "id": "02911313f405ef0415188ceb357b415f02af5d64",
+                "id": "a273c9ac39f351b287bf3aed6705bb2f43acc84f",
                 "name": "Rabenkopflift Oberau",
                 "status": null,
                 "type": "skiArea",
@@ -232,17 +240,17 @@ Map {
             ],
             [
               11.1164297,
-              47.55815630000002,
+              47.558156300000014,
             ],
           ],
           "type": "LineString",
         },
         "properties": {
           "color": "hsl(0, 82%, 42%)",
-          "id": "4d07b91974c5a5b3a0ad9e1928c0a6d433c5093b",
+          "id": "e8e4058e82dd25aa12b4673471dd754a8b319f5c",
           "name_and_type": "Skilift Oberau (T-bar)",
           "skiAreas": [
-            "02911313f405ef0415188ceb357b415f02af5d64",
+            "a273c9ac39f351b287bf3aed6705bb2f43acc84f",
           ],
           "status": "operating",
         },
@@ -252,78 +260,6 @@ Map {
     "type": "FeatureCollection",
   },
   "output/mapboxgl_runs.geojson" => {
-    "features": [
-      {
-        "geometry": {
-          "coordinates": [
-            [
-              [
-                11.1164229,
-                47.55812500000001,
-              ],
-              [
-                11.116365499999999,
-                47.5579742,
-              ],
-              [
-                11.1171866,
-                47.55764129999998,
-              ],
-              [
-                11.1164229,
-                47.55812500000001,
-              ],
-            ],
-          ],
-          "type": "Polygon",
-        },
-        "properties": {
-          "color": "hsl(208, 100%, 33%)",
-          "colorName": "blue",
-          "difficulty": "easy",
-          "downhill": 0,
-          "gladed": null,
-          "grooming": null,
-          "id": "06d4001a8c7266c1fef7d3925c37ca9ea4947ea5",
-          "lit": null,
-          "name": "Oberauer Skiabfahrt",
-          "oneway": true,
-          "patrolled": null,
-          "skiAreas": [
-            "02911313f405ef0415188ceb357b415f02af5d64",
-          ],
-        },
-        "type": "Feature",
-      },
-    ],
-    "type": "FeatureCollection",
-  },
-  "output/mapboxgl_ski_areas.geojson" => {
-    "features": [
-      {
-        "geometry": {
-          "coordinates": [
-            11.122066084534,
-            47.557111836837,
-          ],
-          "type": "Point",
-        },
-        "properties": {
-          "downhillDistance": null,
-          "has_downhill": true,
-          "id": "02911313f405ef0415188ceb357b415f02af5d64",
-          "maxElevation": null,
-          "name": "Rabenkopflift Oberau",
-          "nordicDistance": null,
-          "status": null,
-          "vertical": null,
-        },
-        "type": "Feature",
-      },
-    ],
-    "type": "FeatureCollection",
-  },
-  "output/runs.geojson" => {
     "features": [
       {
         "geometry": {
@@ -350,13 +286,85 @@ Map {
           "type": "Polygon",
         },
         "properties": {
+          "color": "hsl(208, 100%, 33%)",
+          "colorName": "blue",
+          "difficulty": "easy",
+          "downhill": 0,
+          "gladed": null,
+          "grooming": null,
+          "id": "72587edf07dd3862f9086084698d82783cb1b16e",
+          "lit": null,
+          "name": "Oberauer Skiabfahrt",
+          "oneway": true,
+          "patrolled": null,
+          "skiAreas": [
+            "a273c9ac39f351b287bf3aed6705bb2f43acc84f",
+          ],
+        },
+        "type": "Feature",
+      },
+    ],
+    "type": "FeatureCollection",
+  },
+  "output/mapboxgl_ski_areas.geojson" => {
+    "features": [
+      {
+        "geometry": {
+          "coordinates": [
+            11.122066085,
+            47.557111837,
+          ],
+          "type": "Point",
+        },
+        "properties": {
+          "downhillDistance": null,
+          "has_downhill": true,
+          "id": "a273c9ac39f351b287bf3aed6705bb2f43acc84f",
+          "maxElevation": null,
+          "name": "Rabenkopflift Oberau",
+          "nordicDistance": null,
+          "status": null,
+          "vertical": null,
+        },
+        "type": "Feature",
+      },
+    ],
+    "type": "FeatureCollection",
+  },
+  "output/runs.geojson" => {
+    "features": [
+      {
+        "geometry": {
+          "coordinates": [
+            [
+              [
+                11.1164229,
+                47.558125000000004,
+              ],
+              [
+                11.116365499999999,
+                47.5579742,
+              ],
+              [
+                11.1171866,
+                47.55764129999999,
+              ],
+              [
+                11.1164229,
+                47.558125000000004,
+              ],
+            ],
+          ],
+          "type": "Polygon",
+        },
+        "properties": {
           "description": null,
           "difficulty": "easy",
           "difficultyConvention": "europe",
           "elevationProfile": null,
           "gladed": null,
           "grooming": null,
-          "id": "06d4001a8c7266c1fef7d3925c37ca9ea4947ea5",
+          "id": "72587edf07dd3862f9086084698d82783cb1b16e",
           "lit": null,
           "name": "Oberauer Skiabfahrt",
           "oneway": true,
@@ -367,8 +375,8 @@ Map {
             {
               "geometry": {
                 "coordinates": [
-                  11.122066084534,
-                  47.557111836837,
+                  11.122066085,
+                  47.557111837,
                 ],
                 "type": "Point",
               },
@@ -377,7 +385,7 @@ Map {
                   "downhill",
                 ],
                 "assignedFrom": "proximity",
-                "id": "02911313f405ef0415188ceb357b415f02af5d64",
+                "id": "a273c9ac39f351b287bf3aed6705bb2f43acc84f",
                 "name": "Rabenkopflift Oberau",
                 "status": null,
                 "type": "skiArea",
@@ -409,8 +417,8 @@ Map {
       {
         "geometry": {
           "coordinates": [
-            11.122066084534,
-            47.557111836837,
+            11.122066085,
+            47.557111837,
           ],
           "type": "Point",
         },
@@ -418,7 +426,7 @@ Map {
           "activities": [
             "downhill",
           ],
-          "id": "02911313f405ef0415188ceb357b415f02af5d64",
+          "id": "a273c9ac39f351b287bf3aed6705bb2f43acc84f",
           "name": "Rabenkopflift Oberau",
           "places": [],
           "runConvention": "europe",
@@ -448,166 +456,185 @@ Map {
   },
 }
 `);
+  } finally {
+    await dataStore.close();
+  }
 });
 
 it("shortens ski area names for Mapbox GL output", async () => {
   const paths = TestHelpers.getFilePaths();
-  const longName =
-    "Ski Welt (Wilder Kaiser – Gosau, Scheffau, Ellmau - Going, Söll, Brixen, Westendorf, Hopfgarten - Itter - Kelchsau)";
-  TestHelpers.mockInputFiles(
-    {
-      skiMapSkiAreas: [
-        {
-          type: "Feature",
-          properties: {
-            id: "13666",
-            name: longName,
-            status: null,
-            activities: [SkiAreaActivity.Downhill],
-            scalerank: 1,
-            official_website: null,
+  const config = createTestConfig();
+  const dataStore = new PostGISDataStore(config.postgresCache);
+  try {
+    const longName =
+      "Ski Welt (Wilder Kaiser – Gosau, Scheffau, Ellmau - Going, Söll, Brixen, Westendorf, Hopfgarten - Itter - Kelchsau)";
+    await TestHelpers.mockInputFiles(
+      {
+        skiMapSkiAreas: [
+          {
+            type: "Feature",
+            properties: {
+              id: "13666",
+              name: longName,
+              status: null,
+              activities: [SkiAreaActivity.Downhill],
+              scalerank: 1,
+              official_website: null,
+            },
+            geometry: {
+              type: "Point",
+              coordinates: [11.122066084534, 47.557111836837],
+            },
           },
-          geometry: {
-            type: "Point",
-            coordinates: [11.122066084534, 47.557111836837],
-          },
-        },
-      ],
-      openStreetMapSkiAreas: [],
-      openStreetMapSkiAreaSites: [],
-      lifts: [],
-      runs: [],
-    },
-    paths.input,
-  );
+        ],
+        openStreetMapSkiAreas: [],
+        openStreetMapSkiAreaSites: [],
+        lifts: [],
+        runs: [],
+      },
+      dataStore,
+    );
 
-  await prepare(paths, createTestConfig());
+    await prepare(paths, config);
 
-  expect(
-    TestHelpers.fileContents(paths.output.mapboxGL.skiAreas).features[0]
-      .properties.name,
-  ).toBe("Ski Welt");
-  expect(
-    TestHelpers.fileContents(paths.output.skiAreas).features[0].properties.name,
-  ).toBe(longName);
+    expect(
+      TestHelpers.fileContents(paths.output.mapboxGL.skiAreas).features[0]
+        .properties.name,
+    ).toBe("Ski Welt");
+    expect(
+      TestHelpers.fileContents(paths.output.skiAreas).features[0].properties
+        .name,
+    ).toBe(longName);
+  } finally {
+    await dataStore.close();
+  }
 });
 
 it("processes OpenStreetMap ski areas", async () => {
   const paths = TestHelpers.getFilePaths();
-  TestHelpers.mockInputFiles(
-    {
-      skiMapSkiAreas: [],
-      openStreetMapSkiAreas: [
-        {
-          type: "Feature",
-          properties: {
-            type: "way",
-            id: 13666,
-            tags: {
-              landuse: "winter_sports",
+  const config = createTestConfig();
+  const dataStore = new PostGISDataStore(config.postgresCache);
+  try {
+    await TestHelpers.mockInputFiles(
+      {
+        skiMapSkiAreas: [],
+        openStreetMapSkiAreas: [
+          {
+            type: "Feature",
+            properties: {
+              type: "way",
+              id: 13666,
+              tags: {
+                landuse: "winter_sports",
+              },
+            },
+            geometry: {
+              type: "Polygon",
+              coordinates: [
+                [
+                  [0, 0],
+                  [0, 1],
+                  [1, 0],
+                  [0, 0],
+                ],
+              ],
             },
           },
-          geometry: {
-            type: "Polygon",
-            coordinates: [
-              [
-                [0, 0],
-                [0, 1],
-                [1, 0],
-                [0, 0],
-              ],
-            ],
-          },
-        },
-      ],
-      openStreetMapSkiAreaSites: [],
-      lifts: [],
-      runs: [],
-    },
-    paths.input,
-  );
+        ],
+        openStreetMapSkiAreaSites: [],
+        lifts: [],
+        runs: [],
+      },
+      dataStore,
+    );
 
-  await prepare(paths, createTestConfig());
+    await prepare(paths, config);
 
-  expect(TestHelpers.fileContents(paths.output.skiAreas))
-    .toMatchInlineSnapshot(`
+    expect(TestHelpers.fileContents(paths.output.skiAreas))
+      .toMatchInlineSnapshot(`
 {
   "features": [],
   "type": "FeatureCollection",
 }
 `);
+  } finally {
+    await dataStore.close();
+  }
 });
 
 it("processes OpenStreetMap ski area sites", async () => {
   const paths = TestHelpers.getFilePaths();
-  TestHelpers.mockInputFiles(
-    {
-      skiMapSkiAreas: [],
-      openStreetMapSkiAreas: [],
-      openStreetMapSkiAreaSites: [
-        {
-          id: 1,
-          type: "relation",
-          tags: {
-            name: "Wendelstein",
-          },
-          members: [
-            { type: "way", ref: 1, role: "" },
-            { type: "way", ref: 2, role: "" },
-          ],
-        },
-      ],
-      lifts: [
-        {
-          type: "Feature",
-          geometry: {
-            type: "LineString",
-            coordinates: [
-              [0, 0],
-              [1, 1],
-            ],
-          },
-          properties: {
+  const config = createTestConfig();
+  const dataStore = new PostGISDataStore(config.postgresCache);
+  try {
+    await TestHelpers.mockInputFiles(
+      {
+        skiMapSkiAreas: [],
+        openStreetMapSkiAreas: [],
+        openStreetMapSkiAreaSites: [
+          {
             id: 1,
-            type: "way",
-            tags: { name: "Wendelsteinbahn", aerialway: "cable_car" },
-          },
-        },
-      ],
-      runs: [
-        {
-          type: "Feature",
-          geometry: {
-            type: "LineString",
-            coordinates: [
-              [1, 1],
-              [0, 0],
+            type: "relation",
+            tags: {
+              name: "Wendelstein",
+            },
+            members: [
+              { type: "way", ref: 1, role: "" },
+              { type: "way", ref: 2, role: "" },
             ],
           },
-          properties: {
-            id: 2,
-            type: "way",
-            tags: { name: "Westabfahrt", "piste:type": "downhill" },
+        ],
+        lifts: [
+          {
+            type: "Feature",
+            geometry: {
+              type: "LineString",
+              coordinates: [
+                [0, 0],
+                [1, 1],
+              ],
+            },
+            properties: {
+              id: 1,
+              type: "way",
+              tags: { name: "Wendelsteinbahn", aerialway: "cable_car" },
+            },
           },
-        },
-      ],
-    },
-    paths.input,
-  );
+        ],
+        runs: [
+          {
+            type: "Feature",
+            geometry: {
+              type: "LineString",
+              coordinates: [
+                [1, 1],
+                [0, 0],
+              ],
+            },
+            properties: {
+              id: 2,
+              type: "way",
+              tags: { name: "Westabfahrt", "piste:type": "downhill" },
+            },
+          },
+        ],
+      },
+      dataStore,
+    );
 
-  await prepare(paths, createTestConfig());
+    await prepare(paths, config);
 
-  expect(
-    TestHelpers.fileContents(paths.output.skiAreas).features.map(
-      simplifiedSkiAreaFeature,
-    ),
-  ).toMatchInlineSnapshot(`[]`);
+    expect(
+      TestHelpers.fileContents(paths.output.skiAreas).features.map(
+        simplifiedSkiAreaFeature,
+      ),
+    ).toMatchInlineSnapshot(`[]`);
 
-  expect(
-    TestHelpers.fileContents(paths.output.lifts).features.map(
-      simplifiedLiftFeature,
-    ),
-  ).toMatchInlineSnapshot(`
+    expect(
+      TestHelpers.fileContents(paths.output.lifts).features.map(
+        simplifiedLiftFeature,
+      ),
+    ).toMatchInlineSnapshot(`
 [
   {
     "id": "fa8b7321d15e0f111786a467e69c7b8e1d4f9431",
@@ -617,11 +644,11 @@ it("processes OpenStreetMap ski area sites", async () => {
 ]
 `);
 
-  expect(
-    TestHelpers.fileContents(paths.output.runs).features.map(
-      simplifiedRunFeature,
-    ),
-  ).toMatchInlineSnapshot(`
+    expect(
+      TestHelpers.fileContents(paths.output.runs).features.map(
+        simplifiedRunFeature,
+      ),
+    ).toMatchInlineSnapshot(`
 [
   {
     "id": "ab2c973773eabc9757213f2e917575286f7e6c7e",
@@ -630,4 +657,7 @@ it("processes OpenStreetMap ski area sites", async () => {
   },
 ]
 `);
+  } finally {
+    await dataStore.close();
+  }
 });

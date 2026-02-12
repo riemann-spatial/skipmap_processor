@@ -13,7 +13,11 @@ import {
   convertGeoJSONToGeoPackage,
   convertHighwayGeoJSONToGeoPackage,
 } from "./io/GeoPackageWriter";
-import { OutputFeature, getPostGISDataStore } from "./io/PostGISDataStore";
+import {
+  OutputFeature,
+  PostGISDataStore,
+  getPostGISDataStore,
+} from "./io/PostGISDataStore";
 import * as CSVFormatter from "./transforms/CSVFormatter";
 import { createElevationProcessor } from "./transforms/Elevation";
 import toFeatureCollection from "./transforms/FeatureCollection";
@@ -117,6 +121,7 @@ export default async function prepare(paths: DataPaths, config: Config) {
     await performanceMonitor.withPhase(
       "Phase 2: GeoJSON Preparation",
       async () => {
+        const dataStore = getPostGISDataStore(config.postgresCache);
         const siteProvider = new SkiAreaSiteProvider();
 
         // Create shared elevation processor for ski areas, runs, and lifts
@@ -130,19 +135,21 @@ export default async function prepare(paths: DataPaths, config: Config) {
           await performanceMonitor.withOperation(
             "Processing ski areas",
             async () => {
-              siteProvider.loadSites(paths.input.osmJSON.skiAreaSites);
+              await siteProvider.loadSitesFromDB(dataStore);
 
               await StreamToPromise(
                 merge([
-                  readGeoJSONFeatures(paths.input.geoJSON.skiAreas).pipe(
+                  asyncGeneratorToStream(
+                    dataStore.streamInputSkiAreas("openstreetmap"),
+                  ).pipe(
                     flatMap(
                       formatSkiArea(InputSkiAreaType.OPENSTREETMAP_LANDUSE),
                     ),
                   ),
                   Readable.from(siteProvider.getGeoJSONSites()),
-                  readGeoJSONFeatures(paths.input.geoJSON.skiMapSkiAreas).pipe(
-                    flatMap(formatSkiArea(InputSkiAreaType.SKIMAP_ORG)),
-                  ),
+                  asyncGeneratorToStream(
+                    dataStore.streamInputSkiAreas("skimap"),
+                  ).pipe(flatMap(formatSkiArea(InputSkiAreaType.SKIMAP_ORG))),
                 ])
                   .pipe(mapAsync(elevationTransform?.transform || null, 10))
                   .pipe(toFeatureCollection())
@@ -155,7 +162,7 @@ export default async function prepare(paths: DataPaths, config: Config) {
             "Processing runs",
             async () => {
               await StreamToPromise(
-                readGeoJSONFeatures(paths.input.geoJSON.runs)
+                asyncGeneratorToStream(dataStore.streamInputRuns())
                   .pipe(flatMapArray(formatRun))
                   .pipe(map(addSkiAreaSites(siteProvider)))
                   .pipe(accumulate(new RunNormalizerAccumulator()))
@@ -173,7 +180,7 @@ export default async function prepare(paths: DataPaths, config: Config) {
             "Processing lifts",
             async () => {
               await StreamToPromise(
-                readGeoJSONFeatures(paths.input.geoJSON.lifts)
+                asyncGeneratorToStream(dataStore.streamInputLifts())
                   .pipe(flatMap(formatLift))
                   .pipe(map(addSkiAreaSites(siteProvider)))
                   .pipe(mapAsync(elevationTransform?.transform || null, 10))
@@ -189,7 +196,7 @@ export default async function prepare(paths: DataPaths, config: Config) {
               "Processing highways",
               async () => {
                 await StreamToPromise(
-                  readGeoJSONFeatures(paths.input.geoJSON.highways)
+                  asyncGeneratorToStream(dataStore.streamInputHighways())
                     .pipe(flatMapArray(formatHighway))
                     .pipe(mapAsync(elevationTransform?.transform || null, 10))
                     .pipe(toFeatureCollection())
@@ -414,6 +421,29 @@ export default async function prepare(paths: DataPaths, config: Config) {
   Logger.log("Done preparing");
 
   performanceMonitor.logTimeline();
+}
+
+function asyncGeneratorToStream<T>(generator: AsyncGenerator<T>): Readable {
+  const iterator = generator[Symbol.asyncIterator]();
+
+  return new Readable({
+    objectMode: true,
+    read: function (this: Readable, _) {
+      const readable = this;
+      iterator
+        .next()
+        .catch((_: unknown) => {
+          Logger.log("Failed reading from database, stopping.");
+          readable.push(null);
+          return undefined as IteratorResult<T> | undefined;
+        })
+        .then((result: IteratorResult<T> | undefined) => {
+          if (result) {
+            readable.push(result.done ? null : result.value);
+          }
+        });
+    },
+  });
 }
 
 function geoJSONFeatureToOutputFeature(

@@ -15,10 +15,15 @@ export interface InputSkiAreaFeature extends InputFeature {
   source: "openstreetmap" | "skimap";
 }
 
+export interface InputSkiAreaSiteMember {
+  type: string;
+  ref: number;
+}
+
 export interface InputSkiAreaSite {
   osm_id: number;
   properties: Record<string, unknown>;
-  member_ids: number[];
+  members: InputSkiAreaSiteMember[];
 }
 
 export interface OutputFeature {
@@ -190,12 +195,12 @@ export class PostGISDataStore {
           values.push(
             site.osm_id,
             JSON.stringify(site.properties),
-            JSON.stringify(site.member_ids),
+            JSON.stringify(site.members),
           );
         });
 
         await client.query(
-          `INSERT INTO input.ski_area_sites (osm_id, properties, member_ids)
+          `INSERT INTO input.ski_area_sites (osm_id, properties, members)
            VALUES ${placeholders.join(", ")}`,
           values,
         );
@@ -369,7 +374,7 @@ export class PostGISDataStore {
   async *streamInputSkiAreaSites(): AsyncGenerator<{
     osm_id: number;
     properties: Record<string, unknown>;
-    member_ids: number[];
+    members: InputSkiAreaSiteMember[];
   }> {
     const client = await this.pool.connect();
     try {
@@ -379,7 +384,7 @@ export class PostGISDataStore {
 
       while (hasMore) {
         const result = await client.query(
-          `SELECT osm_id, properties, member_ids
+          `SELECT osm_id, properties, members
            FROM input.ski_area_sites
            ORDER BY id
            LIMIT $1 OFFSET $2`,
@@ -390,7 +395,7 @@ export class PostGISDataStore {
           yield {
             osm_id: row.osm_id,
             properties: row.properties,
-            member_ids: row.member_ids,
+            members: row.members,
           };
         }
 

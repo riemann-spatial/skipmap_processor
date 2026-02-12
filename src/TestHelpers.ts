@@ -34,8 +34,13 @@ import {
   DataPaths,
   GeoJSONIntermediatePaths,
   GeoJSONOutputPaths,
-  InputDataPaths,
 } from "./io/GeoJSONFiles";
+import {
+  InputFeature,
+  InputSkiAreaFeature,
+  InputSkiAreaSite,
+  PostGISDataStore,
+} from "./io/PostGISDataStore";
 import placeholderSiteGeometry from "./utils/PlaceholderSiteGeometry";
 
 export interface FolderContents extends Map<string, any> {}
@@ -43,7 +48,6 @@ export interface FolderContents extends Map<string, any> {}
 export function getFilePaths(): DataPaths {
   const dir = tmp.dirSync().name;
   return {
-    input: new InputDataPaths(path.join(dir, "input")),
     intermediate: new GeoJSONIntermediatePaths(path.join(dir, "intermediate")),
     output: new GeoJSONOutputPaths(path.join(dir, "output")),
   };
@@ -57,7 +61,17 @@ export function getTempWorkingDir(): string {
   return tmp.dirSync().name;
 }
 
-export function mockInputFiles(
+function geoJSONFeatureToInputFeature(feature: GeoJSON.Feature): InputFeature {
+  const props = feature.properties || {};
+  return {
+    osm_id: props.id || 0,
+    osm_type: props.type || "unknown",
+    geometry: feature.geometry,
+    properties: props,
+  };
+}
+
+export async function mockInputFiles(
   input: {
     skiMapSkiAreas: InputSkiMapOrgSkiAreaFeature[];
     openStreetMapSkiAreas: InputOpenStreetMapSkiAreaFeature[];
@@ -65,42 +79,61 @@ export function mockInputFiles(
     lifts: InputLiftFeature[];
     runs: InputRunFeature[];
   },
-  inputPaths: InputDataPaths,
-) {
-  fs.writeFileSync(
-    inputPaths.geoJSON.skiMapSkiAreas,
-    JSON.stringify({
-      type: "FeatureCollection",
-      features: input.skiMapSkiAreas,
+  dataStore: PostGISDataStore,
+): Promise<void> {
+  await dataStore.resetInputTables();
+
+  // Store runs
+  const runFeatures = input.runs.map((f) => geoJSONFeatureToInputFeature(f));
+  if (runFeatures.length > 0) {
+    await dataStore.saveInputRuns(runFeatures);
+  }
+
+  // Store lifts
+  const liftFeatures = input.lifts.map((f) => geoJSONFeatureToInputFeature(f));
+  if (liftFeatures.length > 0) {
+    await dataStore.saveInputLifts(liftFeatures);
+  }
+
+  // Store OSM ski areas
+  const osmSkiAreaFeatures: InputSkiAreaFeature[] =
+    input.openStreetMapSkiAreas.map((f) => ({
+      ...geoJSONFeatureToInputFeature(f),
+      source: "openstreetmap" as const,
+    }));
+  // Store skimap.org ski areas
+  const skiMapFeatures: InputSkiAreaFeature[] = input.skiMapSkiAreas.map(
+    (f) => ({
+      osm_id:
+        typeof f.id === "number"
+          ? f.id
+          : parseInt(String(f.id), 10) ||
+            parseInt(String(f.properties?.id), 10) ||
+            0,
+      osm_type: "skimap",
+      geometry: f.geometry,
+      properties: (f.properties || {}) as unknown as Record<string, unknown>,
+      source: "skimap" as const,
     }),
   );
-  fs.writeFileSync(
-    inputPaths.geoJSON.skiAreas,
-    JSON.stringify({
-      type: "FeatureCollection",
-      features: input.openStreetMapSkiAreas,
+  const allSkiAreas = [...osmSkiAreaFeatures, ...skiMapFeatures];
+  if (allSkiAreas.length > 0) {
+    await dataStore.saveInputSkiAreas(allSkiAreas);
+  }
+
+  // Store ski area sites
+  const sites: InputSkiAreaSite[] = input.openStreetMapSkiAreaSites.map(
+    (site) => ({
+      osm_id: site.id,
+      properties: (site.tags || {}) as Record<string, unknown>,
+      members: (site.members || [])
+        .filter((m) => m.type === "way" || m.type === "node")
+        .map((m) => ({ type: m.type, ref: m.ref })),
     }),
   );
-  fs.writeFileSync(
-    inputPaths.osmJSON.skiAreaSites,
-    JSON.stringify({
-      elements: input.openStreetMapSkiAreaSites,
-    }),
-  );
-  fs.writeFileSync(
-    inputPaths.geoJSON.lifts,
-    JSON.stringify({
-      type: "FeatureCollection",
-      features: input.lifts,
-    }),
-  );
-  fs.writeFileSync(
-    inputPaths.geoJSON.runs,
-    JSON.stringify({
-      type: "FeatureCollection",
-      features: input.runs,
-    }),
-  );
+  if (sites.length > 0) {
+    await dataStore.saveInputSkiAreaSites(sites);
+  }
 }
 
 export function mockFeatureFiles(

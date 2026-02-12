@@ -156,7 +156,7 @@ export class DatabaseInitializer {
         id SERIAL PRIMARY KEY,
         osm_id BIGINT,
         properties JSONB,
-        member_ids JSONB,
+        members JSONB,
         created_at TIMESTAMP DEFAULT NOW()
       );
       CREATE INDEX ski_area_sites_osm_id_idx ON input.ski_area_sites (osm_id);

@@ -2,12 +2,13 @@ import { Pool } from "pg";
 import { LocalOSMDatabaseConfig, PostgresConfig } from "../Config";
 import { getPostgresPoolConfig } from "../utils/getPostgresPoolConfig";
 import { Logger } from "../utils/Logger";
-import { InputFeature } from "./PostGISDataStore";
+import { InputFeature, PostGISDataStore } from "./PostGISDataStore";
 
 export async function fetchHighwaysFromLocalDB(
   processingDbConfig: PostgresConfig,
   localDbConfig: LocalOSMDatabaseConfig,
-): Promise<{ features: InputFeature[]; geoJSON: GeoJSON.FeatureCollection }> {
+  dataStore: PostGISDataStore,
+): Promise<number> {
   const processingPool = new Pool(
     getPostgresPoolConfig(
       processingDbConfig.processingDatabase,
@@ -36,10 +37,7 @@ export async function fetchHighwaysFromLocalDB(
 
     if (clusterBuffers.length === 0) {
       Logger.log("No ski features found, skipping local highway query.");
-      return {
-        features: [],
-        geoJSON: { type: "FeatureCollection", features: [] },
-      };
+      return 0;
     }
 
     // Step 2: Get existing run/lift osm_ids to exclude duplicates
@@ -48,26 +46,27 @@ export async function fetchHighwaysFromLocalDB(
       `Found ${existingOsmIds.size} existing run/lift OSM IDs to exclude.`,
     );
 
-    // Step 3: Query highways from local planet DB per cluster
+    // Step 3: Query highways from local planet DB per cluster, saving as we go
     Logger.log("Querying highways from local OSM planet database...");
-    const highwayMap = new Map<
-      number,
-      { feature: InputFeature; geoFeature: GeoJSON.Feature }
-    >();
+    const seenIds = new Set<number>();
+    let totalCount = 0;
 
     for (let i = 0; i < clusterBuffers.length; i++) {
       const buffer = clusterBuffers[i];
-      Logger.log(
-        `Querying cluster ${i + 1}/${clusterBuffers.length} (cluster_id=${buffer.clusterId})...`,
-      );
+      if ((i + 1) % 100 === 0 || i === 0) {
+        Logger.log(
+          `Querying cluster ${i + 1}/${clusterBuffers.length} (${totalCount} highways so far)...`,
+        );
+      }
       const rows = await queryHighwaysInBuffer(localPool, buffer.bufferGeoJSON);
 
+      const batch: InputFeature[] = [];
       for (const row of rows) {
-        if (highwayMap.has(row.osmId) || existingOsmIds.has(row.osmId)) {
+        if (seenIds.has(row.osmId) || existingOsmIds.has(row.osmId)) {
           continue;
         }
-
-        const inputFeature: InputFeature = {
+        seenIds.add(row.osmId);
+        batch.push({
           osm_id: row.osmId,
           osm_type: "way",
           geometry: row.geometry,
@@ -76,36 +75,20 @@ export async function fetchHighwaysFromLocalDB(
             id: row.osmId,
             tags: row.tags,
           },
-        };
+        });
+      }
 
-        const geoFeature: GeoJSON.Feature = {
-          type: "Feature",
-          id: `way/${row.osmId}`,
-          geometry: row.geometry,
-          properties: {
-            type: "way",
-            id: row.osmId,
-            tags: row.tags,
-          },
-        };
-
-        highwayMap.set(row.osmId, { feature: inputFeature, geoFeature });
+      if (batch.length > 0) {
+        await dataStore.saveInputHighways(batch);
+        totalCount += batch.length;
       }
     }
 
-    const features = Array.from(highwayMap.values()).map((v) => v.feature);
-    const geoJSONFeatures = Array.from(highwayMap.values()).map(
-      (v) => v.geoFeature,
-    );
-
     Logger.log(
-      `Fetched ${features.length} highways from local OSM planet database.`,
+      `Fetched ${totalCount} highways from local OSM planet database.`,
     );
 
-    return {
-      features,
-      geoJSON: { type: "FeatureCollection", features: geoJSONFeatures },
-    };
+    return totalCount;
   } finally {
     await localPool.end();
     await processingPool.end();
@@ -122,17 +105,20 @@ async function computeClusterBuffers(
 ): Promise<ClusterBuffer[]> {
   const result = await processingPool.query(`
     WITH all_features AS (
-      SELECT geometry FROM input.runs
+      SELECT ST_MakeValid(geometry) AS geometry FROM input.runs
       UNION ALL
-      SELECT geometry FROM input.lifts
+      SELECT ST_MakeValid(geometry) AS geometry FROM input.lifts
       UNION ALL
-      SELECT geometry FROM input.ski_areas
+      SELECT ST_MakeValid(geometry) AS geometry FROM input.ski_areas
+    ),
+    valid_features AS (
+      SELECT geometry FROM all_features WHERE NOT ST_IsEmpty(geometry)
     ),
     clustered AS (
       SELECT geometry,
              ST_ClusterDBSCAN(geometry, eps := 0.05, minpoints := 1)
                OVER () AS cluster_id
-      FROM all_features
+      FROM valid_features
     )
     SELECT cluster_id,
            ST_AsGeoJSON(

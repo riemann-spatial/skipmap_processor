@@ -1,6 +1,7 @@
 import nock from "nock";
 import { RunFeature } from "openskidata-format";
 import { Config, getPostgresTestConfig } from "./Config";
+import { PostGISDataStore } from "./io/PostGISDataStore";
 import prepare from "./PrepareGeoJSON";
 import * as TestHelpers from "./TestHelpers";
 
@@ -55,41 +56,43 @@ afterEach(() => {
 
 it("adds elevations to lift geometry", async () => {
   const paths = TestHelpers.getFilePaths();
-  mockElevationServer(200);
-  TestHelpers.mockInputFiles(
-    {
-      skiMapSkiAreas: [],
-      openStreetMapSkiAreas: [],
-      openStreetMapSkiAreaSites: [],
-      lifts: [
-        {
-          type: "Feature",
-          id: "way/227407273",
-          properties: {
-            type: "way",
-            id: 227407273,
-            tags: {
-              aerialway: "t-bar",
-              name: "Skilift Oberau",
+  const dataStore = new PostGISDataStore(testConfig.postgresCache);
+  try {
+    mockElevationServer(200);
+    await TestHelpers.mockInputFiles(
+      {
+        skiMapSkiAreas: [],
+        openStreetMapSkiAreas: [],
+        openStreetMapSkiAreaSites: [],
+        lifts: [
+          {
+            type: "Feature",
+            id: "way/227407273",
+            properties: {
+              type: "way",
+              id: 227407273,
+              tags: {
+                aerialway: "t-bar",
+                name: "Skilift Oberau",
+              },
+            },
+            geometry: {
+              type: "LineString",
+              coordinates: [
+                [11.1223444, 47.5572422],
+                [11.1164297, 47.5581563],
+              ],
             },
           },
-          geometry: {
-            type: "LineString",
-            coordinates: [
-              [11.1223444, 47.5572422],
-              [11.1164297, 47.5581563],
-            ],
-          },
-        },
-      ],
-      runs: [],
-    },
-    paths.input,
-  );
+        ],
+        runs: [],
+      },
+      dataStore,
+    );
 
-  await prepare(paths, testConfig);
+    await prepare(paths, testConfig);
 
-  expect(TestHelpers.fileContents(paths.output.lifts)).toMatchInlineSnapshot(`
+    expect(TestHelpers.fileContents(paths.output.lifts)).toMatchInlineSnapshot(`
 {
   "features": [
     {
@@ -102,7 +105,7 @@ it("adds elevations to lift geometry", async () => {
           ],
           [
             11.1164297,
-            47.558156300000014,
+            47.55815630000001,
             1,
           ],
         ],
@@ -115,7 +118,7 @@ it("adds elevations to lift geometry", async () => {
         "detachable": null,
         "duration": null,
         "heating": null,
-        "id": "4d07b91974c5a5b3a0ad9e1928c0a6d433c5093b",
+        "id": "e8e4058e82dd25aa12b4673471dd754a8b319f5c",
         "liftType": "t-bar",
         "name": "Skilift Oberau",
         "occupancy": null,
@@ -141,55 +144,59 @@ it("adds elevations to lift geometry", async () => {
   "type": "FeatureCollection",
 }
 `);
+  } finally {
+    await dataStore.close();
+  }
 });
 
 it("adds elevations to run geometry & elevation profile", async () => {
   const paths = TestHelpers.getFilePaths();
-  mockElevationServer(200);
+  const dataStore = new PostGISDataStore(testConfig.postgresCache);
+  try {
+    mockElevationServer(200);
 
-  TestHelpers.mockInputFiles(
-    {
-      skiMapSkiAreas: [],
-      openStreetMapSkiAreas: [],
-      openStreetMapSkiAreaSites: [],
-      lifts: [],
-      runs: [
-        {
-          type: "Feature",
-          id: "way/227407268",
-          properties: {
-            type: "way",
-            id: 227407268,
-            tags: {
-              name: "Oberauer Skiabfahrt",
-              "piste:difficulty": "easy",
-              "piste:type": "downhill",
-              sport: "skiing",
+    await TestHelpers.mockInputFiles(
+      {
+        skiMapSkiAreas: [],
+        openStreetMapSkiAreas: [],
+        openStreetMapSkiAreaSites: [],
+        lifts: [],
+        runs: [
+          {
+            type: "Feature",
+            id: "way/227407268",
+            properties: {
+              type: "way",
+              id: 227407268,
+              tags: {
+                name: "Oberauer Skiabfahrt",
+                "piste:difficulty": "easy",
+                "piste:type": "downhill",
+                sport: "skiing",
+              },
+            },
+            geometry: {
+              type: "LineString",
+              coordinates: [
+                [11.1164229, 47.558125],
+                [11.1163655, 47.5579742],
+                [11.1171866, 47.5556413],
+              ],
             },
           },
-          geometry: {
-            type: "LineString",
-            coordinates: [
-              [11.1164229, 47.558125],
-              [11.1163655, 47.5579742],
-              [11.1171866, 47.5556413],
-            ],
-          },
-        },
-      ],
-    },
-    paths.input,
-  );
+        ],
+      },
+      dataStore,
+    );
 
-  await prepare(paths, testConfig);
+    await prepare(paths, testConfig);
 
-  const feature: RunFeature = TestHelpers.fileContents(paths.output.runs)
-    .features[0];
+    const feature: RunFeature = TestHelpers.fileContents(paths.output.runs)
+      .features[0];
 
-  expect(feature.properties.elevationProfile).toMatchInlineSnapshot(`
+    expect(feature.properties.elevationProfile).toMatchInlineSnapshot(`
 {
   "heights": [
-    0,
     3,
     4,
     5,
@@ -201,17 +208,18 @@ it("adds elevations to run geometry & elevation profile", async () => {
     11,
     12,
     13,
-    2,
+    14,
+    15,
   ],
   "resolution": 25,
 }
 `);
-  expect(feature.geometry).toMatchInlineSnapshot(`
+    expect(feature.geometry).toMatchInlineSnapshot(`
 {
   "coordinates": [
     [
       11.1164229,
-      47.55812500000001,
+      47.558125000000004,
       0,
     ],
     [
@@ -228,45 +236,50 @@ it("adds elevations to run geometry & elevation profile", async () => {
   "type": "LineString",
 }
 `);
+  } finally {
+    await dataStore.close();
+  }
 });
 
 it("completes without adding elevations when elevation server fails", async () => {
   const paths = TestHelpers.getFilePaths();
-  mockElevationServer(500);
-  TestHelpers.mockInputFiles(
-    {
-      skiMapSkiAreas: [],
-      openStreetMapSkiAreas: [],
-      openStreetMapSkiAreaSites: [],
-      lifts: [
-        {
-          type: "Feature",
-          id: "way/227407273",
-          properties: {
-            type: "way",
-            id: 227407273,
-            tags: {
-              aerialway: "t-bar",
-              name: "Skilift Oberau",
+  const dataStore = new PostGISDataStore(testConfig.postgresCache);
+  try {
+    mockElevationServer(500);
+    await TestHelpers.mockInputFiles(
+      {
+        skiMapSkiAreas: [],
+        openStreetMapSkiAreas: [],
+        openStreetMapSkiAreaSites: [],
+        lifts: [
+          {
+            type: "Feature",
+            id: "way/227407273",
+            properties: {
+              type: "way",
+              id: 227407273,
+              tags: {
+                aerialway: "t-bar",
+                name: "Skilift Oberau",
+              },
+            },
+            geometry: {
+              type: "LineString",
+              coordinates: [
+                [11.1223444, 47.5572422],
+                [11.1164297, 47.5581563],
+              ],
             },
           },
-          geometry: {
-            type: "LineString",
-            coordinates: [
-              [11.1223444, 47.5572422],
-              [11.1164297, 47.5581563],
-            ],
-          },
-        },
-      ],
-      runs: [],
-    },
-    paths.input,
-  );
+        ],
+        runs: [],
+      },
+      dataStore,
+    );
 
-  await prepare(paths, testConfig);
+    await prepare(paths, testConfig);
 
-  expect(TestHelpers.fileContents(paths.output.lifts)).toMatchInlineSnapshot(`
+    expect(TestHelpers.fileContents(paths.output.lifts)).toMatchInlineSnapshot(`
 {
   "features": [
     {
@@ -278,7 +291,7 @@ it("completes without adding elevations when elevation server fails", async () =
           ],
           [
             11.1164297,
-            47.558156300000014,
+            47.55815630000001,
           ],
         ],
         "type": "LineString",
@@ -290,7 +303,7 @@ it("completes without adding elevations when elevation server fails", async () =
         "detachable": null,
         "duration": null,
         "heating": null,
-        "id": "4d07b91974c5a5b3a0ad9e1928c0a6d433c5093b",
+        "id": "e8e4058e82dd25aa12b4673471dd754a8b319f5c",
         "liftType": "t-bar",
         "name": "Skilift Oberau",
         "occupancy": null,
@@ -316,65 +329,70 @@ it("completes without adding elevations when elevation server fails", async () =
   "type": "FeatureCollection",
 }
 `);
+  } finally {
+    await dataStore.close();
+  }
 });
 
 it("adds elevations to run polygons", async () => {
   const paths = TestHelpers.getFilePaths();
-  mockElevationServer(200);
+  const dataStore = new PostGISDataStore(testConfig.postgresCache);
+  try {
+    mockElevationServer(200);
 
-  TestHelpers.mockInputFiles(
-    {
-      skiMapSkiAreas: [],
-      openStreetMapSkiAreas: [],
-      openStreetMapSkiAreaSites: [],
-      lifts: [],
-      runs: [
-        {
-          type: "Feature",
-          id: "way/227407273",
-          properties: {
-            type: "way",
-            id: 227407268,
-            tags: {
-              name: "Oberauer Skiabfahrt",
-              "piste:difficulty": "easy",
-              "piste:type": "downhill",
-              sport: "skiing",
+    await TestHelpers.mockInputFiles(
+      {
+        skiMapSkiAreas: [],
+        openStreetMapSkiAreas: [],
+        openStreetMapSkiAreaSites: [],
+        lifts: [],
+        runs: [
+          {
+            type: "Feature",
+            id: "way/227407273",
+            properties: {
+              type: "way",
+              id: 227407268,
+              tags: {
+                name: "Oberauer Skiabfahrt",
+                "piste:difficulty": "easy",
+                "piste:type": "downhill",
+                sport: "skiing",
+              },
+            },
+            geometry: {
+              type: "Polygon",
+              coordinates: [
+                [
+                  [6.544500899999999, 45.3230511],
+                  [6.543409400000001, 45.323173700000005],
+                  [6.5502579, 45.3224134],
+                  [6.550612, 45.3222571],
+                  [6.544500899999999, 45.3230511],
+                ],
+              ],
             },
           },
-          geometry: {
-            type: "Polygon",
-            coordinates: [
-              [
-                [6.544500899999999, 45.3230511],
-                [6.543409400000001, 45.323173700000005],
-                [6.5502579, 45.3224134],
-                [6.550612, 45.3222571],
-                [6.544500899999999, 45.3230511],
-              ],
-            ],
-          },
-        },
-      ],
-    },
-    paths.input,
-  );
+        ],
+      },
+      dataStore,
+    );
 
-  await prepare(paths, testConfig);
+    await prepare(paths, testConfig);
 
-  expect(TestHelpers.fileContents(paths.output.runs).features[0].geometry)
-    .toMatchInlineSnapshot(`
+    expect(TestHelpers.fileContents(paths.output.runs).features[0].geometry)
+      .toMatchInlineSnapshot(`
 {
   "coordinates": [
     [
       [
-        6.544500899999996,
+        6.544500899999999,
         45.3230511,
         0,
       ],
       [
-        6.5434094000000025,
-        45.32317370000001,
+        6.543409400000001,
+        45.323173700000005,
         1,
       ],
       [
@@ -388,13 +406,16 @@ it("adds elevations to run polygons", async () => {
         3,
       ],
       [
-        6.544500899999996,
+        6.544500899999999,
         45.3230511,
-        0,
+        4,
       ],
     ],
   ],
   "type": "Polygon",
 }
 `);
+  } finally {
+    await dataStore.close();
+  }
 });

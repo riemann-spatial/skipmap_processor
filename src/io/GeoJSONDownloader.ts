@@ -1,6 +1,5 @@
 import bboxPolygon from "@turf/bbox-polygon";
 import booleanContains from "@turf/boolean-contains";
-import { readFile, writeFile } from "node:fs/promises";
 import { Readable } from "node:stream";
 import * as JSONStream from "JSONStream";
 import { Config, configFromEnvironment, PostgresConfig } from "../Config";
@@ -16,11 +15,8 @@ import {
   skiAreasDownloadConfig,
   skiMapSkiAreasURL,
 } from "./DownloadURLs";
-import { InputDataPaths } from "./GeoJSONFiles";
 import { fetchHighwaysFromLocalDB } from "./LocalHighwayProvider";
-import convertOSMFileToGeoJSON, {
-  convertOSMToGeoJSON,
-} from "./OSMToGeoJSONConverter";
+import { convertOSMToGeoJSON } from "./OSMToGeoJSONConverter";
 import {
   getPostGISDataStore,
   InputFeature,
@@ -32,9 +28,8 @@ import {
 export default async function downloadAndConvertToGeoJSON(
   folder: string,
   bbox: GeoJSON.BBox | null,
-): Promise<InputDataPaths> {
-  return await performanceMonitor.withPhase("Phase 1: Download", async () => {
-    const paths = new InputDataPaths(folder);
+): Promise<void> {
+  await performanceMonitor.withPhase("Phase 1: Download", async () => {
     const config = configFromEnvironment();
     const dataStore = getPostGISDataStore(config.postgresCache);
 
@@ -43,28 +38,17 @@ export default async function downloadAndConvertToGeoJSON(
     // Serialize downloads using the same endpoint so we don't get rate limited by the Overpass API
     await performanceMonitor.withOperation("Downloading OSM data", async () => {
       const downloads: Promise<void>[] = [
-        downloadAndStoreRuns(overpassEndpoints, paths, bbox, dataStore),
+        downloadAndStoreRuns(overpassEndpoints, bbox, dataStore),
         (async () => {
-          await downloadAndStoreLifts(
-            overpassEndpoints,
-            paths,
-            bbox,
-            dataStore,
-          );
-          await downloadAndStoreSkiAreas(
-            overpassEndpoints,
-            paths,
-            bbox,
-            dataStore,
-          );
+          await downloadAndStoreLifts(overpassEndpoints, bbox, dataStore);
+          await downloadAndStoreSkiAreas(overpassEndpoints, bbox, dataStore);
           await downloadAndStoreSkiAreaSites(
             overpassEndpoints,
-            paths,
             bbox,
             dataStore,
           );
         })(),
-        downloadAndStoreSkiMapOrgSkiAreas(paths, bbox, dataStore),
+        downloadAndStoreSkiMapOrgSkiAreas(bbox, dataStore),
       ];
 
       await Promise.all(downloads);
@@ -73,14 +57,9 @@ export default async function downloadAndConvertToGeoJSON(
       // (needed for local DB buffer query, and serializing also avoids Overpass rate limits)
       if (process.env.COMPILE_HIGHWAY === "1") {
         if (config.localOSMDatabase) {
-          await downloadAndStoreHighwaysFromLocalDB(config, paths, dataStore);
+          await downloadAndStoreHighwaysFromLocalDB(config, dataStore);
         } else {
-          await downloadAndStoreHighways(
-            overpassEndpoints,
-            paths,
-            bbox,
-            dataStore,
-          );
+          await downloadAndStoreHighways(overpassEndpoints, bbox, dataStore);
         }
       }
     });
@@ -98,52 +77,39 @@ export default async function downloadAndConvertToGeoJSON(
     Logger.log(countLog);
 
     performanceMonitor.logTimeline();
-
-    return paths;
   });
 }
 
 async function downloadAndStoreRuns(
   endpoints: string[],
-  paths: InputDataPaths,
   bbox: GeoJSON.BBox | null,
   dataStore: PostGISDataStore,
 ): Promise<void> {
   const osmJSON = await downloadOSMJSON(endpoints, runsDownloadConfig, bbox);
   const geoJSON = convertOSMToGeoJSON(osmJSON);
 
-  // Store in PostGIS
   const features = geoJSON.features.map((f: GeoJSON.Feature) =>
     osmFeatureToInputFeature(f),
   );
   await dataStore.saveInputRuns(features);
-
-  // Also write to file for backward compatibility
-  await writeFeatureCollection(geoJSON, paths.geoJSON.runs);
 }
 
 async function downloadAndStoreLifts(
   endpoints: string[],
-  paths: InputDataPaths,
   bbox: GeoJSON.BBox | null,
   dataStore: PostGISDataStore,
 ): Promise<void> {
   const osmJSON = await downloadOSMJSON(endpoints, liftsDownloadConfig, bbox);
   const geoJSON = convertOSMToGeoJSON(osmJSON);
 
-  // Store in PostGIS
   const features = geoJSON.features.map((f: GeoJSON.Feature) =>
     osmFeatureToInputFeature(f),
   );
   await dataStore.saveInputLifts(features);
-
-  // Also write to file for backward compatibility
-  await writeFeatureCollection(geoJSON, paths.geoJSON.lifts);
 }
 
 async function downloadAndStoreSkiAreas(
   endpoints: string[],
-  paths: InputDataPaths,
   bbox: GeoJSON.BBox | null,
   dataStore: PostGISDataStore,
 ): Promise<void> {
@@ -154,20 +120,15 @@ async function downloadAndStoreSkiAreas(
   );
   const geoJSON = convertOSMToGeoJSON(osmJSON);
 
-  // Store in PostGIS
   const features = geoJSON.features.map((f: GeoJSON.Feature) => ({
     ...osmFeatureToInputFeature(f),
     source: "openstreetmap" as const,
   }));
   await dataStore.saveInputSkiAreas(features);
-
-  // Also write to file for backward compatibility
-  await writeFeatureCollection(geoJSON, paths.geoJSON.skiAreas);
 }
 
 async function downloadAndStoreSkiAreaSites(
   endpoints: string[],
-  paths: InputDataPaths,
   bbox: GeoJSON.BBox | null,
   dataStore: PostGISDataStore,
 ): Promise<void> {
@@ -182,36 +143,34 @@ async function downloadAndStoreSkiAreaSites(
   if (osmJSON.elements) {
     for (const element of osmJSON.elements) {
       if (element.type === "relation") {
-        const memberIds = (element.members || [])
+        const members = (element.members || [])
           .filter(
             (m: { type: string; ref: number }) =>
               m.type === "way" || m.type === "node",
           )
-          .map((m: { ref: number }) => m.ref);
+          .map((m: { type: string; ref: number }) => ({
+            type: m.type,
+            ref: m.ref,
+          }));
 
         sites.push({
           osm_id: element.id,
           properties: element.tags || {},
-          member_ids: memberIds,
+          members,
         });
       }
     }
   }
 
   await dataStore.saveInputSkiAreaSites(sites);
-
-  // Write the raw OSM JSON to file for backward compatibility
-  await writeFile(paths.osmJSON.skiAreaSites, JSON.stringify(osmJSON));
 }
 
 async function downloadAndStoreSkiMapOrgSkiAreas(
-  paths: InputDataPaths,
   bbox: GeoJSON.BBox | null,
   dataStore: PostGISDataStore,
 ): Promise<void> {
   const geoJSON = await downloadSkiMapOrgGeoJSON(bbox);
 
-  // Store in PostGIS
   const features: InputSkiAreaFeature[] = geoJSON.features.map(
     (f: GeoJSON.Feature) => ({
       osm_id: typeof f.id === "number" ? f.id : parseInt(String(f.id), 10) || 0,
@@ -222,14 +181,10 @@ async function downloadAndStoreSkiMapOrgSkiAreas(
     }),
   );
   await dataStore.saveInputSkiAreas(features);
-
-  // Also write to file for backward compatibility
-  await writeFile(paths.geoJSON.skiMapSkiAreas, JSON.stringify(geoJSON));
 }
 
 async function downloadAndStoreHighways(
   endpoints: string[],
-  paths: InputDataPaths,
   bbox: GeoJSON.BBox | null,
   dataStore: PostGISDataStore,
 ): Promise<void> {
@@ -240,29 +195,22 @@ async function downloadAndStoreHighways(
   );
   const geoJSON = convertOSMToGeoJSON(osmJSON);
 
-  // Store in PostGIS
   const features = geoJSON.features.map((f: GeoJSON.Feature) =>
     osmFeatureToInputFeature(f),
   );
   await dataStore.saveInputHighways(features);
-
-  // Also write to file for backward compatibility
-  await writeFeatureCollection(geoJSON, paths.geoJSON.highways);
 }
 
 async function downloadAndStoreHighwaysFromLocalDB(
   config: Config,
-  paths: InputDataPaths,
   dataStore: PostGISDataStore,
 ): Promise<void> {
   Logger.log("Fetching highways from local OSM planet database...");
-  const { features, geoJSON } = await fetchHighwaysFromLocalDB(
+  await fetchHighwaysFromLocalDB(
     config.postgresCache,
     config.localOSMDatabase!,
+    dataStore,
   );
-
-  await dataStore.saveInputHighways(features);
-  await writeFeatureCollection(geoJSON, paths.geoJSON.highways);
 }
 
 function osmFeatureToInputFeature(feature: GeoJSON.Feature): InputFeature {
@@ -392,6 +340,10 @@ async function _downloadJSON(sourceURL: string): Promise<any> {
   return await new Promise((resolve, reject) => {
     const nodeStream = Readable.fromWeb(response.body as any);
 
+    nodeStream.on("error", function (error: Error) {
+      reject(error);
+    });
+
     nodeStream
       .pipe(JSONStream.parse(null))
       .on("root", function (data: any) {
@@ -421,31 +373,4 @@ function sleep(ms: number) {
 
 function overpassURLForQuery(endpoint: string, query: string) {
   return endpoint + "?data=" + encodeURIComponent(query);
-}
-
-function writeFeatureCollection(geojson: any, path: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const fs = require("fs");
-    const outputStream = fs.createWriteStream(path);
-    const separator = "\n";
-
-    outputStream.write(
-      "{" +
-        separator +
-        '"type": "FeatureCollection",' +
-        separator +
-        '"features": [' +
-        separator,
-    );
-    geojson.features.forEach(function (f: any, i: any) {
-      outputStream.write(JSON.stringify(f, null, 0));
-      if (i != geojson.features.length - 1) {
-        outputStream.write("," + separator);
-      }
-    });
-    outputStream.write(separator + "]" + separator + "}" + separator);
-    outputStream.on("finish", resolve);
-    outputStream.on("error", reject);
-    outputStream.end();
-  });
 }

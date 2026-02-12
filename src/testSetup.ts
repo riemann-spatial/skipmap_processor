@@ -23,19 +23,6 @@ export default async function globalSetup(): Promise<void> {
         // Database doesn't exist, create it
         await client.query('CREATE DATABASE "openskidata_test"');
         console.log("✅ Created test database: openskidata_test");
-
-        // Connect to the new database to enable PostGIS
-        const testPool = new Pool(
-          getPostgresPoolConfig("openskidata_test", adminConfig),
-        );
-        try {
-          const testClient = await testPool.connect();
-          await testClient.query("CREATE EXTENSION IF NOT EXISTS postgis");
-          testClient.release();
-          console.log("✅ Enabled PostGIS extension on openskidata_test");
-        } finally {
-          await testPool.end();
-        }
       } else {
         console.log("✅ Test database openskidata_test already exists");
       }
@@ -45,7 +32,80 @@ export default async function globalSetup(): Promise<void> {
   } catch (error) {
     console.warn("⚠️ Failed to setup test database:", error);
     console.warn("Tests may fail due to database connectivity issues");
-  } finally {
     await adminPool.end();
+    return;
+  }
+  await adminPool.end();
+
+  // Ensure PostGIS extension and input/output schemas exist
+  const testPool = new Pool(
+    getPostgresPoolConfig("openskidata_test", adminConfig),
+  );
+  try {
+    const testClient = await testPool.connect();
+    try {
+      await testClient.query("CREATE EXTENSION IF NOT EXISTS postgis");
+      const user = adminConfig.user;
+      await testClient.query(`
+        CREATE SCHEMA IF NOT EXISTS input AUTHORIZATION "${user}";
+        CREATE SCHEMA IF NOT EXISTS output AUTHORIZATION "${user}";
+        GRANT ALL ON SCHEMA input TO "${user}";
+        GRANT ALL ON SCHEMA output TO "${user}";
+      `);
+      // Drop and recreate input tables to ensure schema is up to date
+      await testClient.query(`
+        DROP TABLE IF EXISTS input.runs CASCADE;
+        DROP TABLE IF EXISTS input.lifts CASCADE;
+        DROP TABLE IF EXISTS input.ski_areas CASCADE;
+        DROP TABLE IF EXISTS input.ski_area_sites CASCADE;
+        DROP TABLE IF EXISTS input.highways CASCADE;
+
+        CREATE TABLE input.runs (
+          id SERIAL PRIMARY KEY,
+          osm_id BIGINT,
+          osm_type TEXT,
+          geometry GEOMETRY(Geometry, 4326),
+          properties JSONB,
+          created_at TIMESTAMP DEFAULT NOW()
+        );
+        CREATE TABLE input.lifts (
+          id SERIAL PRIMARY KEY,
+          osm_id BIGINT,
+          osm_type TEXT,
+          geometry GEOMETRY(Geometry, 4326),
+          properties JSONB,
+          created_at TIMESTAMP DEFAULT NOW()
+        );
+        CREATE TABLE input.ski_areas (
+          id SERIAL PRIMARY KEY,
+          osm_id BIGINT,
+          osm_type TEXT,
+          geometry GEOMETRY(Geometry, 4326),
+          properties JSONB,
+          source TEXT,
+          created_at TIMESTAMP DEFAULT NOW()
+        );
+        CREATE TABLE input.ski_area_sites (
+          id SERIAL PRIMARY KEY,
+          osm_id BIGINT,
+          properties JSONB,
+          members JSONB,
+          created_at TIMESTAMP DEFAULT NOW()
+        );
+        CREATE TABLE input.highways (
+          id SERIAL PRIMARY KEY,
+          osm_id BIGINT,
+          osm_type TEXT,
+          geometry GEOMETRY(Geometry, 4326),
+          properties JSONB,
+          created_at TIMESTAMP DEFAULT NOW()
+        );
+      `);
+      console.log("✅ Ensured input schema and tables exist");
+    } finally {
+      testClient.release();
+    }
+  } finally {
+    await testPool.end();
   }
 }

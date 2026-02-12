@@ -1,11 +1,10 @@
-import { readFileSync } from "fs";
 import {
   LiftFeature,
   RunFeature,
   SkiAreaFeature,
   SourceType,
 } from "openskidata-format";
-import { OSMSkiAreaSite } from "../features/SkiAreaFeature";
+import { PostGISDataStore } from "../io/PostGISDataStore";
 import { Logger } from "../utils/Logger";
 import { formatSkiArea, InputSkiAreaType } from "./SkiAreaFormatter";
 
@@ -14,26 +13,35 @@ export class SkiAreaSiteProvider {
   private geoJSONByOSMID = new Map<string, SkiAreaFeature[]>();
   private format = formatSkiArea(InputSkiAreaType.OPENSTREETMAP_SITE);
 
-  loadSites = (path: string) => {
-    const json = JSON.parse(readFileSync(path, "utf8"));
-    const sites: OSMSkiAreaSite[] = json.elements;
-    sites.forEach((site) => {
-      const skiArea = this.format(site);
+  async loadSitesFromDB(dataStore: PostGISDataStore): Promise<void> {
+    for await (const site of dataStore.streamInputSkiAreaSites()) {
+      const siteInput = {
+        type: "relation" as const,
+        id: site.osm_id,
+        members: site.members.map((m) => ({
+          type: m.type,
+          ref: m.ref,
+          role: "",
+        })),
+        tags: site.properties as Record<string, string>,
+      };
+
+      const skiArea = this.format(siteInput);
       if (skiArea) {
         this.all.push(skiArea);
-        (site.members || []).forEach((member) => {
+        for (const member of site.members) {
           const id = member.type + "/" + member.ref.toString();
           const memberSkiAreas = this.geoJSONByOSMID.get(id) || [];
           memberSkiAreas.push(skiArea);
           this.geoJSONByOSMID.set(id, memberSkiAreas);
-        });
+        }
       } else {
         Logger.log(
-          "Failed converting site to ski are: " + JSON.stringify(site),
+          "Failed converting site to ski area: " + JSON.stringify(site),
         );
       }
-    });
-  };
+    }
+  }
 
   getSitesForObject = (osmID: string) => {
     return this.geoJSONByOSMID.get(osmID) || [];
