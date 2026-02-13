@@ -16,6 +16,7 @@ import {
 import { Transform } from "stream";
 import { pipeline } from "stream/promises";
 import { HighwayProperties } from "../features/HighwayFeature";
+import { PeakProperties } from "../features/PeakFeature";
 import { Logger } from "../utils/Logger";
 import { readGeoJSONFeatures } from "./GeoJSONReader";
 
@@ -1043,6 +1044,301 @@ class HighwayGeoPackageWriter {
       default:
         return "GEOMETRY";
     }
+  }
+
+  async createIndexesForLayer(layerName: string): Promise<void> {
+    if (!this.geoPackage) {
+      throw new Error("GeoPackage not initialized");
+    }
+
+    const tables = this.geoPackage.getFeatureTables();
+    const layerTables = tables.filter((t) => t.startsWith(layerName + "_"));
+
+    for (const tableName of layerTables) {
+      await this.geoPackage.indexFeatureTable(tableName);
+    }
+  }
+
+  async close(): Promise<void> {
+    if (this.geoPackage) {
+      try {
+        this.geoPackage.database.run("VACUUM");
+      } catch (error) {
+        Logger.warn("Could not vacuum database:", error);
+      }
+
+      await this.geoPackage.close();
+      this.geoPackage = null;
+    }
+  }
+}
+
+// Peak schema - separate since Peak is not part of openskidata-format FeatureType
+const PEAK_SCHEMA: ColumnDefinition<PeakProperties>[] = [
+  {
+    name: "feature_id",
+    dataType: "TEXT",
+    getValue: (p) => p.id,
+  },
+  {
+    name: "name",
+    dataType: "TEXT",
+    getValue: (p) => p.name,
+  },
+  {
+    name: "elevation",
+    dataType: "REAL",
+    getValue: (p) => p.elevation,
+  },
+  {
+    name: "elevation_source",
+    dataType: "TEXT",
+    getValue: (p) => p.elevationSource,
+  },
+  {
+    name: "prominence",
+    dataType: "REAL",
+    getValue: (p) => p.prominence,
+  },
+  {
+    name: "natural_type",
+    dataType: "TEXT",
+    getValue: (p) => p.naturalType,
+  },
+  {
+    name: "sources",
+    dataType: "TEXT",
+    getValue: (p) => toJSON(p.sources),
+  },
+  {
+    name: "websites",
+    dataType: "TEXT",
+    getValue: (p) => toJSON(p.websites),
+  },
+  {
+    name: "wikidata_id",
+    dataType: "TEXT",
+    getValue: (p) => p.wikidataID,
+  },
+  {
+    name: "wikipedia_id",
+    dataType: "TEXT",
+    getValue: (p) => p.wikipediaID,
+  },
+];
+
+/**
+ * Convert Peak GeoJSON to GeoPackage.
+ * Separate function since Peak is not part of openskidata-format FeatureType.
+ */
+export async function convertPeakGeoJSONToGeoPackage(
+  geoJSONPath: string,
+  geoPackagePath: string,
+  layerName: string,
+): Promise<void> {
+  const writer = new PeakGeoPackageWriter();
+  await writer.initialize(geoPackagePath);
+
+  const BATCH_SIZE = 1000;
+  let batch: Feature<GeoJSON.Geometry, PeakProperties>[] = [];
+
+  await pipeline(
+    readGeoJSONFeatures(geoJSONPath),
+    new Transform({
+      objectMode: true,
+      async transform(
+        feature: Feature<GeoJSON.Geometry, PeakProperties>,
+        encoding,
+        callback,
+      ) {
+        batch.push(feature);
+
+        if (batch.length >= BATCH_SIZE) {
+          try {
+            await writer.addPeakFeatures(layerName, batch, true);
+            batch = [];
+            callback();
+          } catch (error) {
+            callback(error as Error);
+          }
+        } else {
+          callback();
+        }
+      },
+      async flush(callback) {
+        if (batch.length > 0) {
+          try {
+            await writer.addPeakFeatures(layerName, batch, true);
+            callback();
+          } catch (error) {
+            callback(error as Error);
+          }
+        } else {
+          callback();
+        }
+      },
+    }),
+  );
+
+  // Create spatial indexes once at the end
+  await writer.createIndexesForLayer(layerName);
+
+  await writer.close();
+}
+
+/**
+ * Writer for Peak features in GeoPackage format.
+ * Separate class since Peak is not part of openskidata-format FeatureType.
+ */
+class PeakGeoPackageWriter {
+  private geoPackage: GeoPackage | null = null;
+
+  async initialize(filePath: string): Promise<void> {
+    if (existsSync(filePath)) {
+      this.geoPackage = await GeoPackageAPI.open(filePath);
+    } else {
+      this.geoPackage = await GeoPackageAPI.create(filePath);
+    }
+
+    this.optimizeDatabaseForBulkInsert();
+  }
+
+  private optimizeDatabaseForBulkInsert(): void {
+    if (!this.geoPackage) {
+      throw new Error("GeoPackage not initialized");
+    }
+
+    try {
+      const db = this.geoPackage.database;
+      db.run("PRAGMA journal_mode = WAL");
+      db.run("PRAGMA cache_size = -65536");
+      db.run("PRAGMA synchronous = NORMAL");
+      db.run("PRAGMA page_size = 4096");
+      db.run("PRAGMA temp_store = MEMORY");
+      db.run("PRAGMA mmap_size = 268435456");
+    } catch (error) {
+      Logger.warn("Could not apply database optimizations:", error);
+    }
+  }
+
+  async addPeakFeatures(
+    layerName: string,
+    features: Feature<GeoJSON.Geometry, PeakProperties>[],
+    skipSpatialIndex: boolean = false,
+  ): Promise<void> {
+    if (!this.geoPackage || features.length === 0) {
+      return;
+    }
+
+    // All peaks are Point geometry, use single table
+    const tableName = `${layerName}_point`;
+    await this.addFeaturesToTable(tableName, features, skipSpatialIndex);
+  }
+
+  private async addFeaturesToTable(
+    tableName: string,
+    features: Feature<GeoJSON.Geometry, PeakProperties>[],
+    skipSpatialIndex: boolean = false,
+  ): Promise<void> {
+    if (!this.geoPackage || features.length === 0) {
+      return;
+    }
+
+    const columns = PEAK_SCHEMA.map((col) => ({
+      name: col.name,
+      dataType: col.dataType,
+    }));
+
+    // Calculate bounding box
+    let minX = Infinity,
+      minY = Infinity,
+      maxX = -Infinity,
+      maxY = -Infinity;
+    features.forEach((feature) => {
+      const coords = this.extractCoordinates(feature.geometry);
+      coords.forEach((coord) => {
+        minX = Math.min(minX, coord[0]);
+        maxX = Math.max(maxX, coord[0]);
+        minY = Math.min(minY, coord[1]);
+        maxY = Math.max(maxY, coord[1]);
+      });
+    });
+    const boundingBox = new BoundingBox(minX, minY, maxX, maxY);
+
+    const hasZ = features.some((feature) => {
+      const coords = this.extractCoordinates(feature.geometry);
+      return coords.some(
+        (coord) => coord.length >= 3 && Number.isFinite(coord[2]),
+      );
+    });
+
+    // Create geometry columns
+    const geometryColumns = new GeometryColumns();
+    geometryColumns.table_name = tableName;
+    geometryColumns.column_name = "geometry";
+    geometryColumns.geometry_type_name = "POINT";
+    geometryColumns.srs_id = 4326;
+    geometryColumns.z = hasZ ? 1 : 0;
+    geometryColumns.m = 0;
+
+    // Create table if it doesn't exist
+    if (!this.geoPackage.isTable(tableName)) {
+      this.geoPackage.createFeatureTable(
+        tableName,
+        geometryColumns,
+        columns,
+        boundingBox,
+        4326,
+      );
+    }
+
+    // Transform properties
+    const transformedFeatures = features.map((feature) => {
+      const transformedProperties: Record<string, string | number | null> = {};
+
+      PEAK_SCHEMA.forEach((column) => {
+        const value = column.getValue(feature.properties);
+        transformedProperties[column.name] =
+          value === undefined ? null : (value as string | number | null);
+      });
+
+      return {
+        type: "Feature" as const,
+        geometry: feature.geometry,
+        properties: transformedProperties,
+      };
+    });
+
+    await this.geoPackage.addGeoJSONFeaturesToGeoPackage(
+      transformedFeatures,
+      tableName,
+      !skipSpatialIndex,
+      1000,
+    );
+  }
+
+  private extractCoordinates(geometry: GeoJSON.Geometry): number[][] {
+    const coords: number[][] = [];
+
+    const extractFromCoordArray = (arr: unknown): void => {
+      if (Array.isArray(arr)) {
+        if (
+          arr.length >= 2 &&
+          typeof arr[0] === "number" &&
+          typeof arr[1] === "number"
+        ) {
+          coords.push(arr as number[]);
+        } else {
+          arr.forEach((item) => extractFromCoordArray(item));
+        }
+      }
+    };
+
+    if ("coordinates" in geometry) {
+      extractFromCoordArray(geometry.coordinates);
+    }
+
+    return coords;
   }
 
   async createIndexesForLayer(layerName: string): Promise<void> {

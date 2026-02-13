@@ -125,6 +125,15 @@ export interface ClusteringDatabase {
    * Returns the union of all member object geometries, or the ski area's own geometry if no members
    */
   getObjectDerivedSkiAreaGeometry(skiAreaId: string): Promise<GeoJSON.Geometry>;
+
+  /**
+   * Compute a dissolved buffer around all surviving ski features (runs, lifts, ski areas).
+   * Returns a single GeoJSON geometry representing the union of all features buffered
+   * by the given distance. Returns null if there are no features.
+   */
+  computeSkiFeatureBuffer(
+    bufferMeters: number,
+  ): Promise<GeoJSON.Geometry | null>;
 }
 
 export interface GetSkiAreasOptions {

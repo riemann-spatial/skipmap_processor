@@ -172,6 +172,18 @@ export class DatabaseInitializer {
       );
       CREATE INDEX highways_input_geometry_idx ON input.highways USING GIST (geometry);
       CREATE INDEX highways_input_osm_id_idx ON input.highways (osm_id);
+
+      -- input.peaks: Raw peak features from local OSM planet database
+      CREATE TABLE input.peaks (
+        id SERIAL PRIMARY KEY,
+        osm_id BIGINT,
+        osm_type TEXT,
+        geometry GEOMETRY(Geometry, 4326),
+        properties JSONB,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+      CREATE INDEX peaks_input_geometry_idx ON input.peaks USING GIST (geometry);
+      CREATE INDEX peaks_input_osm_id_idx ON input.peaks (osm_id);
     `);
   }
 
@@ -297,6 +309,30 @@ export class DatabaseInitializer {
       CREATE INDEX highways_output_name_idx ON output.highways (name);
       CREATE INDEX highways_output_is_road_idx ON output.highways (is_road);
       CREATE INDEX highways_output_is_walkway_idx ON output.highways (is_walkway);
+
+      -- output.peaks: Processed peak features with exploded properties
+      CREATE TABLE output.peaks (
+        id SERIAL PRIMARY KEY,
+        feature_id TEXT UNIQUE NOT NULL,
+        geometry GEOMETRY(GeometryZ, 4326),
+        type TEXT,
+        name TEXT,
+        elevation REAL,
+        elevation_source TEXT,
+        prominence REAL,
+        natural_type TEXT,
+        websites TEXT[],
+        wikidata_id TEXT,
+        wikipedia_id TEXT,
+        sources JSONB,
+        properties JSONB,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+      CREATE INDEX peaks_output_geometry_idx ON output.peaks USING GIST (geometry);
+      CREATE INDEX peaks_output_feature_id_idx ON output.peaks (feature_id);
+      CREATE INDEX peaks_output_name_idx ON output.peaks (name);
+      CREATE INDEX peaks_output_elevation_idx ON output.peaks (elevation);
+      CREATE INDEX peaks_output_natural_type_idx ON output.peaks (natural_type);
     `);
   }
 

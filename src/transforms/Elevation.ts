@@ -7,6 +7,7 @@ import {
   RunFeature,
   SkiAreaFeature,
 } from "openskidata-format";
+import { PeakFeature } from "../features/PeakFeature";
 import {
   AWS_TERRAIN_TILES_URL,
   ElevationServerConfig,
@@ -123,7 +124,11 @@ function resolveElevationProfileResolution(
   }
 }
 
-export type ElevationFeature = RunFeature | LiftFeature | SkiAreaFeature;
+export type ElevationFeature =
+  | RunFeature
+  | LiftFeature
+  | SkiAreaFeature
+  | PeakFeature;
 
 export interface ElevationProcessor {
   processFeature: (feature: ElevationFeature) => Promise<ElevationFeature>;

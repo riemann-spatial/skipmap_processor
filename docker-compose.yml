@@ -19,23 +19,24 @@ services:
       - POSTGRES_PORT=5432
       - POSTGRES_USER=osm
       - POSTGRES_PASSWORD=osm
-      - DBNAME=GlobalSkiData_HW
+      - DBNAME=pfronten
       # - BBOX=[10.74827, 46.81017, 11.08733, 47.00510] # Ötztal large
       # - BBOX=[37.370679, 56.181660, 37.656116, 56.299853] # Moscow region, Russia
       #- BBOX=[6.47996, 45.21026, 6.67171, 45.45132] # Savoie, France
-      #- BBOX=[10.31460,47.44436, 10.62329, 47.67072] # Pfronten, Germany
+      - BBOX=[10.31460,47.44436, 10.62329, 47.67072] # Pfronten, Germany
       #- BBOX=[11.85573,47.223133,12.119387,47.42013 ] # Innsbruck, Austria
 
       # Set to 1 to enable highway (road/walkway) compilation
       - COMPILE_HIGHWAY=1
-      # Local OSM planet database for highway queries (alternative to Overpass)
-      # Requires COMPILE_HIGHWAY=1
-      - COMPILE_HIGHWAY_LOCAL=1
+      # Local OSM planet database for highway and peak queries (alternative to Overpass)
+      # Requires COMPILE_HIGHWAY=1 for highways; peaks are always loaded
+      - COMPILE_LOCAL=1
       - LOCAL_OSM_DB_HOST=192.168.8.199
       - LOCAL_OSM_DB_PORT=5432
       - LOCAL_OSM_DB_NAME=planet
       - LOCAL_OSM_DB_USER=osm
       - LOCAL_OSM_DB_PASSWORD=osm
+      - LOCAL_OSM_BUFFER_METERS=100 # Buffer distance in meters around ski feature clusters (default: 1000)
 
       - OUTPUT_TO_FILES=0
       - OUTPUT_TO_POSTGIS=1

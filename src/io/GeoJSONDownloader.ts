@@ -16,6 +16,7 @@ import {
   skiMapSkiAreasURL,
 } from "./DownloadURLs";
 import { fetchHighwaysFromLocalDB } from "./LocalHighwayProvider";
+import { fetchPeaksFromLocalDB } from "./LocalPeakProvider";
 import { convertOSMToGeoJSON } from "./OSMToGeoJSONConverter";
 import {
   getPostGISDataStore,
@@ -62,6 +63,11 @@ export default async function downloadAndConvertToGeoJSON(
           await downloadAndStoreHighways(overpassEndpoints, bbox, dataStore);
         }
       }
+
+      // Peak download from local OSM database (peaks are always loaded when local DB is configured)
+      if (config.localOSMDatabase) {
+        await downloadAndStorePeaksFromLocalDB(config, dataStore);
+      }
     });
 
     // Log counts
@@ -73,6 +79,10 @@ export default async function downloadAndConvertToGeoJSON(
     if (process.env.COMPILE_HIGHWAY === "1") {
       const highwaysCount = await dataStore.getInputHighwaysCount();
       countLog += `, ${highwaysCount} highways`;
+    }
+    if (config.localOSMDatabase) {
+      const peaksCount = await dataStore.getInputPeaksCount();
+      countLog += `, ${peaksCount} peaks`;
     }
     Logger.log(countLog);
 
@@ -210,6 +220,20 @@ async function downloadAndStoreHighwaysFromLocalDB(
     config.postgresCache,
     config.localOSMDatabase!,
     dataStore,
+    config.localOSMDatabase!.bufferMeters,
+  );
+}
+
+async function downloadAndStorePeaksFromLocalDB(
+  config: Config,
+  dataStore: PostGISDataStore,
+): Promise<void> {
+  Logger.log("Fetching peaks from local OSM planet database...");
+  await fetchPeaksFromLocalDB(
+    config.postgresCache,
+    config.localOSMDatabase!,
+    dataStore,
+    config.localOSMDatabase!.bufferMeters,
   );
 }
 

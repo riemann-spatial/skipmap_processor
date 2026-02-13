@@ -1,4 +1,10 @@
-import { createWriteStream, existsSync, renameSync, unlinkSync } from "fs";
+import {
+  copyFileSync,
+  createWriteStream,
+  existsSync,
+  renameSync,
+  unlinkSync,
+} from "fs";
 import merge from "merge2";
 import { FeatureType, SkiAreaFeature } from "openskidata-format";
 import * as path from "path";
@@ -12,6 +18,7 @@ import { readGeoJSONFeatures } from "./io/GeoJSONReader";
 import {
   convertGeoJSONToGeoPackage,
   convertHighwayGeoJSONToGeoPackage,
+  convertPeakGeoJSONToGeoPackage,
 } from "./io/GeoPackageWriter";
 import {
   OutputFeature,
@@ -21,7 +28,9 @@ import {
 import * as CSVFormatter from "./transforms/CSVFormatter";
 import { createElevationProcessor } from "./transforms/Elevation";
 import toFeatureCollection from "./transforms/FeatureCollection";
+import { PeakFeature } from "./features/PeakFeature";
 import { formatHighway } from "./transforms/HighwayFormatter";
+import { formatPeak } from "./transforms/PeakFormatter";
 import { formatLift } from "./transforms/LiftFormatter";
 import * as MapboxGLFormatter from "./transforms/MapboxGLFormatter";
 import { formatRun } from "./transforms/RunFormatter";
@@ -134,15 +143,23 @@ export default async function prepare(paths: DataPaths, config: Config) {
 
         try {
           // Query total feature counts for progress reporting
-          const [skiAreaCount, runsCount, liftsCount, highwaysCount] =
-            await Promise.all([
-              dataStore.getInputSkiAreasCount(),
-              dataStore.getInputRunsCount(),
-              dataStore.getInputLiftsCount(),
-              process.env.COMPILE_HIGHWAY === "1"
-                ? dataStore.getInputHighwaysCount()
-                : Promise.resolve(0),
-            ]);
+          const [
+            skiAreaCount,
+            runsCount,
+            liftsCount,
+            highwaysCount,
+            peaksCount,
+          ] = await Promise.all([
+            dataStore.getInputSkiAreasCount(),
+            dataStore.getInputRunsCount(),
+            dataStore.getInputLiftsCount(),
+            process.env.COMPILE_HIGHWAY === "1"
+              ? dataStore.getInputHighwaysCount()
+              : Promise.resolve(0),
+            config.localOSMDatabase
+              ? dataStore.getInputPeaksCount()
+              : Promise.resolve(0),
+          ]);
 
           await performanceMonitor.withOperation(
             "Processing ski areas",
@@ -231,6 +248,45 @@ export default async function prepare(paths: DataPaths, config: Config) {
           }
 
           await Promise.all(parallelTasks);
+
+          // Process peaks if local OSM database is configured
+          // (runs after parallel tasks since peaks need the shared elevation processor)
+          if (config.localOSMDatabase) {
+            await performanceMonitor.withOperation(
+              "Processing peaks",
+              async () => {
+                const peakElevationTransform = elevationTransform
+                  ? async (feature: PeakFeature): Promise<PeakFeature> => {
+                      if (feature.properties.elevation !== null) {
+                        // OSM ele tag is valid, skip DEM lookup
+                        return feature;
+                      }
+                      const result =
+                        await elevationTransform.transform(feature);
+                      const peakResult = result as PeakFeature;
+                      if (
+                        peakResult.geometry.coordinates.length >= 3 &&
+                        Number.isFinite(peakResult.geometry.coordinates[2])
+                      ) {
+                        peakResult.properties.elevation =
+                          peakResult.geometry.coordinates[2];
+                        peakResult.properties.elevationSource = "dem";
+                      }
+                      return peakResult;
+                    }
+                  : null;
+
+                await StreamToPromise(
+                  asyncGeneratorToStream(dataStore.streamInputPeaks())
+                    .pipe(flatMapArray(formatPeak))
+                    .pipe(mapAsync(peakElevationTransform, 10))
+                    .pipe(logProgress("Peaks", peaksCount))
+                    .pipe(toFeatureCollection())
+                    .pipe(createWriteStream(paths.intermediate.peaks)),
+                );
+              },
+            );
+          }
         } finally {
           if (elevationTransform) {
             await elevationTransform.processor.close();
@@ -238,6 +294,11 @@ export default async function prepare(paths: DataPaths, config: Config) {
         }
       },
     );
+
+    // Copy intermediate peaks to output (peaks skip clustering)
+    if (config.localOSMDatabase && existsSync(paths.intermediate.peaks)) {
+      copyFileSync(paths.intermediate.peaks, paths.output.peaks);
+    }
 
     await performanceMonitor.withPhase("Phase 3: Clustering", async () => {
       await clusterSkiAreas(
@@ -368,6 +429,15 @@ export default async function prepare(paths: DataPaths, config: Config) {
               "highways",
             );
           }
+
+          // Add peaks if local OSM database is configured
+          if (config.localOSMDatabase && existsSync(paths.output.peaks)) {
+            await convertPeakGeoJSONToGeoPackage(
+              paths.output.peaks,
+              paths.output.geoPackage,
+              "peaks",
+            );
+          }
         },
       );
 
@@ -426,6 +496,16 @@ export default async function prepare(paths: DataPaths, config: Config) {
               "Highways",
             );
             Logger.log(`Exported ${highwayCount} highways to PostGIS`);
+          }
+
+          // Export peaks if local OSM database is configured
+          if (config.localOSMDatabase && existsSync(paths.output.peaks)) {
+            const peakCount = await exportFeaturesToPostGIS(
+              paths.output.peaks,
+              (batch) => dataStore.saveOutputPeaks(batch),
+              "Peaks",
+            );
+            Logger.log(`Exported ${peakCount} peaks to PostGIS`);
           }
 
           await dataStore.createOutput2DViews();

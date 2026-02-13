@@ -15,6 +15,7 @@ export class GeoJSONIntermediatePaths {
   readonly runs: string;
   readonly lifts: string;
   readonly highways: string;
+  readonly peaks: string;
 
   constructor(folder: string) {
     if (!existsSync(folder)) {
@@ -24,6 +25,7 @@ export class GeoJSONIntermediatePaths {
     this.runs = join(folder, "intermediate_runs.geojson");
     this.lifts = join(folder, "intermediate_lifts.geojson");
     this.highways = join(folder, "intermediate_highways.geojson");
+    this.peaks = join(folder, "intermediate_peaks.geojson");
   }
 }
 
@@ -32,6 +34,7 @@ export class GeoJSONOutputPaths implements CommonGeoJSONPaths {
   readonly runs: string;
   readonly lifts: string;
   readonly highways: string;
+  readonly peaks: string;
 
   readonly mapboxGL: CommonGeoJSONPaths & { highways: string };
   readonly csv: string;
@@ -46,6 +49,7 @@ export class GeoJSONOutputPaths implements CommonGeoJSONPaths {
     this.runs = join(folder, "runs.geojson");
     this.lifts = join(folder, "lifts.geojson");
     this.highways = join(folder, "highways.geojson");
+    this.peaks = join(folder, "peaks.geojson");
     this.mapboxGL = {
       skiAreas: join(folder, "mapboxgl_ski_areas.geojson"),
       runs: join(folder, "mapboxgl_runs.geojson"),

@@ -103,6 +103,14 @@ export class PostGISDataStore {
           END IF;
         END $$;
       `);
+      // Conditionally truncate peaks table if it exists
+      await client.query(`
+        DO $$ BEGIN
+          IF EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'input' AND table_name = 'peaks') THEN
+            TRUNCATE TABLE input.peaks RESTART IDENTITY CASCADE;
+          END IF;
+        END $$;
+      `);
       Logger.log("Input tables reset complete.");
     } finally {
       client.release();
@@ -128,6 +136,14 @@ export class PostGISDataStore {
           END IF;
         END $$;
       `);
+      // Conditionally truncate peaks table if it exists
+      await client.query(`
+        DO $$ BEGIN
+          IF EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'output' AND table_name = 'peaks') THEN
+            TRUNCATE TABLE output.peaks RESTART IDENTITY CASCADE;
+          END IF;
+        END $$;
+      `);
       Logger.log("Output tables reset complete.");
     } finally {
       client.release();
@@ -144,6 +160,10 @@ export class PostGISDataStore {
 
   async saveInputHighways(features: InputFeature[]): Promise<void> {
     await this.batchInsertFeatures("input.highways", features);
+  }
+
+  async saveInputPeaks(features: InputFeature[]): Promise<void> {
+    await this.batchInsertFeatures("input.peaks", features);
   }
 
   async saveInputSkiAreas(features: InputSkiAreaFeature[]): Promise<void> {
@@ -224,6 +244,10 @@ export class PostGISDataStore {
 
   async saveOutputHighways(features: OutputFeature[]): Promise<void> {
     await this.batchInsertOutputHighways(features);
+  }
+
+  async saveOutputPeaks(features: OutputFeature[]): Promise<void> {
+    await this.batchInsertOutputPeaks(features);
   }
 
   async createOutput2DViews(): Promise<void> {
@@ -348,6 +372,33 @@ export class PostGISDataStore {
           END IF;
         END $$;
       `);
+
+      // Create peaks_2d view if peaks table exists
+      await client.query(`
+        DO $$ BEGIN
+          IF EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'output' AND table_name = 'peaks') THEN
+            EXECUTE $view$
+              CREATE OR REPLACE VIEW "output".peaks_2d AS
+              SELECT peaks.id,
+                     peaks.feature_id,
+                     st_force2d(peaks.geometry) AS geometry,
+                     peaks.type,
+                     peaks.name,
+                     peaks.elevation,
+                     peaks.elevation_source,
+                     peaks.prominence,
+                     peaks.natural_type,
+                     peaks.websites,
+                     peaks.wikidata_id,
+                     peaks.wikipedia_id,
+                     peaks.sources,
+                     peaks.properties,
+                     peaks.created_at
+              FROM output.peaks
+            $view$;
+          END IF;
+        END $$;
+      `);
     } finally {
       client.release();
     }
@@ -363,6 +414,10 @@ export class PostGISDataStore {
 
   async *streamInputHighways(): AsyncGenerator<GeoJSON.Feature> {
     yield* this.streamFeatures("input.highways");
+  }
+
+  async *streamInputPeaks(): AsyncGenerator<GeoJSON.Feature> {
+    yield* this.streamFeatures("input.peaks");
   }
 
   async *streamInputSkiAreas(
@@ -423,6 +478,10 @@ export class PostGISDataStore {
     yield* this.streamOutputFeatures("output.highways");
   }
 
+  async *streamOutputPeaks(): AsyncGenerator<GeoJSON.Feature> {
+    yield* this.streamOutputFeatures("output.peaks");
+  }
+
   async getInputRunsCount(): Promise<number> {
     return this.getCount("input.runs");
   }
@@ -437,6 +496,10 @@ export class PostGISDataStore {
 
   async getInputHighwaysCount(): Promise<number> {
     return this.getCount("input.highways");
+  }
+
+  async getInputPeaksCount(): Promise<number> {
+    return this.getCount("input.peaks");
   }
 
   async close(): Promise<void> {
@@ -820,6 +883,78 @@ export class PostGISDataStore {
               feature.feature_id,
               toString(p.wikidataID),
               p.skiAreas ? JSON.stringify(p.skiAreas) : null,
+              p.sources ? JSON.stringify(p.sources) : null,
+              JSON.stringify(p),
+            ],
+          );
+        }
+      }
+    } finally {
+      client.release();
+    }
+  }
+
+  private async batchInsertOutputPeaks(
+    features: OutputFeature[],
+  ): Promise<void> {
+    const client = await this.pool.connect();
+    try {
+      const batchSize = 500;
+      for (let i = 0; i < features.length; i += batchSize) {
+        const batch = features.slice(i, i + batchSize);
+        const values: unknown[] = [];
+        const placeholders: string[] = [];
+
+        batch.forEach((feature, idx) => {
+          const p = feature.properties;
+          const numCols = 10;
+          const offset = idx * numCols;
+          placeholders.push(
+            `($${offset + 1}, ST_Force3D(ST_GeomFromGeoJSON($${offset + 2})), $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8}, $${offset + 9}, $${offset + 10})`,
+          );
+          values.push(
+            feature.feature_id,
+            JSON.stringify(feature.geometry),
+            toString(p.type),
+            toString(p.name),
+            toNumber(p.elevation),
+            toString(p.elevationSource),
+            toNumber(p.prominence),
+            toString(p.naturalType),
+            toTextArray(p.websites),
+            toString(p.wikidataID),
+          );
+        });
+
+        await client.query(
+          `INSERT INTO output.peaks (feature_id, geometry, type, name, elevation, elevation_source, prominence, natural_type, websites, wikidata_id)
+           VALUES ${placeholders.join(", ")}
+           ON CONFLICT (feature_id) DO UPDATE SET
+             geometry = EXCLUDED.geometry,
+             type = EXCLUDED.type,
+             name = EXCLUDED.name,
+             elevation = EXCLUDED.elevation,
+             elevation_source = EXCLUDED.elevation_source,
+             prominence = EXCLUDED.prominence,
+             natural_type = EXCLUDED.natural_type,
+             websites = EXCLUDED.websites,
+             wikidata_id = EXCLUDED.wikidata_id`,
+          values,
+        );
+
+        // Update JSONB columns and full properties
+        for (let j = 0; j < batch.length; j++) {
+          const feature = batch[j];
+          const p = feature.properties;
+          await client.query(
+            `UPDATE output.peaks SET
+               wikipedia_id = $2,
+               sources = $3,
+               properties = $4
+             WHERE feature_id = $1`,
+            [
+              feature.feature_id,
+              toString(p.wikipediaID),
               p.sources ? JSON.stringify(p.sources) : null,
               JSON.stringify(p),
             ],

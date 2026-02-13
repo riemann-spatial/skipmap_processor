@@ -32,10 +32,12 @@ export default async function clusterSkiAreas(
 
     // Process highways if enabled - associate with ski areas
     if (processHighways) {
+      const bufferMeters = config.localOSMDatabase?.bufferMeters ?? 1000;
       await clusteringService.associateHighwaysWithSkiAreas(
         intermediatePaths.highways,
         outputPaths.highways,
         outputPaths.skiAreas,
+        bufferMeters,
       );
     }
   } finally {

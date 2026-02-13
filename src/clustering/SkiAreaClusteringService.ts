@@ -22,7 +22,7 @@ import { HighwayFeature, SkiAreaReference } from "../features/HighwayFeature";
 import { readGeoJSONFeatures } from "../io/GeoJSONReader";
 import toFeatureCollection from "../transforms/FeatureCollection";
 import { getPoints, getPositions } from "../transforms/GeoTransforms";
-import { map } from "../transforms/StreamTransforms";
+import { filter, map } from "../transforms/StreamTransforms";
 import { Logger } from "../utils/Logger";
 import { ClusteringDatabase } from "./database/ClusteringDatabase";
 import { performanceMonitor } from "./database/PerformanceMonitor";
@@ -242,24 +242,47 @@ export class SkiAreaClusteringService {
   };
 
   /**
-   * Associate highways with ski areas by spatial intersection.
-   * Highways that intersect ski area polygons get that ski area's reference.
+   * Associate highways with ski areas and remove orphaned highways.
+   *
+   * Highways are kept or discarded based on a dissolved 100m buffer around
+   * all surviving ski features (runs, lifts, ski areas) computed in PostGIS.
+   * Highways outside this buffer are removed.
+   *
+   * Ski area references on kept highways are set by polygon intersection
+   * with ski area polygons (same as before).
    */
   async associateHighwaysWithSkiAreas(
     highwaysInputPath: string,
     highwaysOutputPath: string,
     skiAreasOutputPath: string,
+    bufferMeters: number,
   ): Promise<void> {
     await performanceMonitor.withOperation(
       "Associating highways with ski areas",
       async () => {
-        // Load ski areas with polygon geometries
+        // Compute a dissolved buffer around all surviving ski features
+        const skiFeatureBuffer =
+          await this.database.computeSkiFeatureBuffer(bufferMeters);
+
+        if (!skiFeatureBuffer) {
+          Logger.log(
+            "No ski features found, skipping highway association (all highways removed)",
+          );
+          await StreamToPromise(
+            readGeoJSONFeatures(highwaysInputPath)
+              .pipe(filter(() => false))
+              .pipe(toFeatureCollection())
+              .pipe(createWriteStream(highwaysOutputPath)),
+          );
+          return;
+        }
+
+        // Load ski area polygons for associating highways with specific ski areas
         const skiAreaPolygons: SkiAreaFeature[] = [];
         for await (const feature of readGeoJSONFeaturesGenerator(
           skiAreasOutputPath,
         )) {
           const skiArea = feature as SkiAreaFeature;
-          // Only include ski areas with polygon or multipolygon geometries
           if (
             skiArea.geometry.type === "Polygon" ||
             skiArea.geometry.type === "MultiPolygon"
@@ -268,18 +291,38 @@ export class SkiAreaClusteringService {
           }
         }
         Logger.log(
-          `Loaded ${skiAreaPolygons.length} ski areas with polygon geometries`,
+          `Loaded ${skiAreaPolygons.length} ski area polygons for reference assignment`,
         );
 
-        // Process highways and associate with ski areas
+        let keptCount = 0;
+        let droppedCount = 0;
+
         await StreamToPromise(
           readGeoJSONFeatures(highwaysInputPath)
+            .pipe(
+              filter((feature: GeoJSON.Feature) => {
+                try {
+                  const keep = booleanIntersects(
+                    feature.geometry,
+                    skiFeatureBuffer,
+                  );
+                  if (keep) {
+                    keptCount++;
+                  } else {
+                    droppedCount++;
+                  }
+                  return keep;
+                } catch (error) {
+                  droppedCount++;
+                  return false;
+                }
+              }),
+            )
             .pipe(
               map((feature: GeoJSON.Feature) => {
                 const highway = feature as HighwayFeature;
                 const matchingSkiAreas: SkiAreaReference[] = [];
 
-                // Check intersection with each ski area polygon
                 for (const skiArea of skiAreaPolygons) {
                   try {
                     if (booleanIntersects(highway.geometry, skiArea.geometry)) {
@@ -291,12 +334,10 @@ export class SkiAreaClusteringService {
                       });
                     }
                   } catch (error) {
-                    // Skip invalid geometries
                     continue;
                   }
                 }
 
-                // Update highway with ski area references
                 return {
                   ...highway,
                   properties: {
@@ -310,7 +351,9 @@ export class SkiAreaClusteringService {
             .pipe(createWriteStream(highwaysOutputPath)),
         );
 
-        Logger.log(`Finished associating highways with ski areas`);
+        Logger.log(
+          `Finished associating highways with ski areas: kept ${keptCount}, removed ${droppedCount} orphaned`,
+        );
       },
     );
   }

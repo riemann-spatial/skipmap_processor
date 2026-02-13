@@ -620,4 +620,33 @@ export class PostgreSQLClusteringDatabase implements ClusteringDatabase {
       return rows[0].geometry;
     }
   }
+
+  async computeSkiFeatureBuffer(
+    bufferMeters: number,
+  ): Promise<GeoJSON.Geometry | null> {
+    this.ensureInitialized();
+
+    const rows = await this.executeQuery<
+      Array<{ buffer_geojson: GeoJSON.Geometry | null }>
+    >(
+      `SELECT ST_AsGeoJSON(
+         ST_Transform(
+           ST_Simplify(
+             ST_Union(ST_Buffer(ST_Transform(geom, 3857), $1)),
+             $1 * 0.1
+           ),
+           4326
+         )
+       )::json AS buffer_geojson
+       FROM objects
+       WHERE geom IS NOT NULL`,
+      [bufferMeters],
+    );
+
+    if (rows.length === 0 || !rows[0].buffer_geojson) {
+      return null;
+    }
+
+    return rows[0].buffer_geojson;
+  }
 }
