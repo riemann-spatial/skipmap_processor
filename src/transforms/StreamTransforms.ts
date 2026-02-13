@@ -110,26 +110,20 @@ export function accumulate<X, Y>(accumulator: Accumulator<X, Y>): Duplex {
 
 export function logProgress(label: string, total: number | null): Transform {
   let processed = 0;
-  let lastLogTime = Date.now();
-  const LOG_INTERVAL_MS = 30_000;
-  const LOG_INTERVAL_COUNT = 1000;
+  let lastLoggedPctStep = -1;
+  const PCT_STEP = 5;
 
   return new Transform({
     objectMode: true,
     transform(data, _, done) {
       processed++;
-      const now = Date.now();
-      const shouldLog =
-        processed % LOG_INTERVAL_COUNT === 0 ||
-        now - lastLogTime >= LOG_INTERVAL_MS;
 
-      if (shouldLog) {
-        lastLogTime = now;
-        if (total !== null && total > 0) {
+      if (total !== null && total > 0) {
+        const pctStep = Math.floor((processed / total) * 100 / PCT_STEP);
+        if (pctStep > lastLoggedPctStep) {
+          lastLoggedPctStep = pctStep;
           const pct = ((processed / total) * 100).toFixed(1);
           Logger.log(`${label}: ${processed}/${total} (${pct}%)`);
-        } else {
-          Logger.log(`${label}: ${processed} processed`);
         }
       }
 
