@@ -1,5 +1,6 @@
 import transform from "parallel-transform";
 import { Duplex, PassThrough, Transform, Writable } from "stream";
+import { Logger } from "../utils/Logger";
 import Accumulator from "./accumulator/Accumulator";
 
 export function map<X, Y>(mapper: (input: X) => Y): Transform {
@@ -105,6 +106,38 @@ export function accumulate<X, Y>(accumulator: Accumulator<X, Y>): Duplex {
   });
 
   return duplex;
+}
+
+export function logProgress(label: string, total: number | null): Transform {
+  let processed = 0;
+  let lastLoggedPctStep = -1;
+  const PCT_STEP = 5;
+
+  return new Transform({
+    objectMode: true,
+    transform(data, _, done) {
+      processed++;
+
+      if (total !== null && total > 0) {
+        const pctStep = Math.floor((processed / total) * 100 / PCT_STEP);
+        if (pctStep > lastLoggedPctStep) {
+          lastLoggedPctStep = pctStep;
+          const pct = ((processed / total) * 100).toFixed(1);
+          Logger.log(`${label}: ${processed}/${total} (${pct}%)`);
+        }
+      }
+
+      done(null, data);
+    },
+    flush(done) {
+      if (total !== null && total > 0) {
+        Logger.log(`${label}: done — ${processed}/${total}`);
+      } else {
+        Logger.log(`${label}: done — ${processed} total`);
+      }
+      done();
+    },
+  });
 }
 
 export function passThrough(): Transform {

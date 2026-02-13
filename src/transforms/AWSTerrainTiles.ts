@@ -6,8 +6,102 @@ const DEFAULT_AWS_TERRAIN_ZOOM = 15;
 const NODATA_VALUE = -32768;
 const MIN_VALID_ELEVATION = -500;
 const MAX_VALID_ELEVATION = 9000;
+const MAX_TILE_CACHE_SIZE = 50000;
 
 type Result<T, E = Error> = { ok: true; value: T } | { ok: false; error: E };
+
+interface TileRasterData {
+  elevationData: Int16Array | Float32Array | Float64Array;
+  width: number;
+  height: number;
+}
+
+// In-memory cache for fetched tile raster data, keyed by tile key (z/x/y).
+// Stores Promises to deduplicate concurrent in-flight requests for the same tile.
+// null value means the tile returned 404 (ocean, outside coverage).
+const tileRasterCache = new Map<string, Promise<TileRasterData | null>>();
+
+/**
+ * Evict oldest entries when the cache exceeds MAX_TILE_CACHE_SIZE.
+ * Map preserves insertion order, so we delete from the front.
+ */
+function evictOldTileCacheEntries(): void {
+  if (tileRasterCache.size <= MAX_TILE_CACHE_SIZE) {
+    return;
+  }
+  const entriesToRemove = tileRasterCache.size - MAX_TILE_CACHE_SIZE;
+  const iterator = tileRasterCache.keys();
+  for (let i = 0; i < entriesToRemove; i++) {
+    const key = iterator.next().value;
+    if (key !== undefined) {
+      tileRasterCache.delete(key);
+    }
+  }
+}
+
+/**
+ * Fetch tile raster data, using the in-memory cache to avoid redundant HTTP requests.
+ * Concurrent requests for the same tile share the same Promise.
+ * 404 responses are cached as null. Errors are not cached (allow retry).
+ */
+async function fetchCachedTileRaster(
+  url: string,
+  tileKey: string,
+): Promise<TileRasterData | null> {
+  const cached = tileRasterCache.get(tileKey);
+  if (cached !== undefined) {
+    return cached;
+  }
+
+  const promise = (async (): Promise<TileRasterData | null> => {
+    const response = await fetchWithRetry(url, {
+      headers: {
+        "User-Agent":
+          "openskidata-processor/1.0.0 (+https://github.com/russellporter/openskidata-processor)",
+      },
+    });
+
+    if (!response.ok) {
+      if (response.status === 404) {
+        return null;
+      }
+      throw new Error(`HTTP ${response.status} for tile ${tileKey}`);
+    }
+
+    const arrayBuffer = await response.arrayBuffer();
+    const tiff = await fromArrayBuffer(arrayBuffer);
+    const image = await tiff.getImage();
+    const rasters = await image.readRasters();
+    const elevationData = rasters[0] as
+      | Int16Array
+      | Float32Array
+      | Float64Array;
+
+    return {
+      elevationData,
+      width: image.getWidth(),
+      height: image.getHeight(),
+    };
+  })();
+
+  tileRasterCache.set(tileKey, promise);
+
+  // If the promise rejects, remove from cache so the tile can be retried
+  promise.catch(() => {
+    tileRasterCache.delete(tileKey);
+  });
+
+  evictOldTileCacheEntries();
+
+  return promise;
+}
+
+/**
+ * Clear the in-memory tile raster cache (useful for testing).
+ */
+export function clearAWSTileCache(): void {
+  tileRasterCache.clear();
+}
 
 interface TileCoordinate {
   originalIndex: number;
@@ -257,52 +351,30 @@ function extractRawCellValue(
 
 /**
  * Fetch a GeoTIFF tile and extract elevation values for all coordinates in the batch.
+ * Uses the in-memory tile cache to avoid redundant HTTP requests across batches.
  * Uses bilinear interpolation if batch.interpolate is true, otherwise raw cell values.
  */
 export async function fetchTileAndExtractElevations(
   batch: TileBatch,
 ): Promise<Result<Map<number, number | null>, string>> {
   try {
-    const response = await fetchWithRetry(batch.url, {
-      headers: {
-        "User-Agent":
-          "openskidata-processor/1.0.0 (+https://github.com/russellporter/openskidata-processor)",
-      },
-    });
+    const tileData = await fetchCachedTileRaster(batch.url, batch.tileKey);
+    const results = new Map<number, number | null>();
 
-    if (!response.ok) {
-      if (response.status === 404) {
-        // Tile doesn't exist (ocean, outside coverage)
-        const results = new Map<number, number | null>();
-        batch.coordinates.forEach((coord) =>
-          results.set(coord.originalIndex, null),
-        );
-        return { ok: true, value: results };
-      }
-      return {
-        ok: false,
-        error: `HTTP ${response.status} for tile ${batch.tileKey}`,
-      };
+    if (tileData === null) {
+      // Tile doesn't exist (ocean, outside coverage)
+      batch.coordinates.forEach((coord) =>
+        results.set(coord.originalIndex, null),
+      );
+      return { ok: true, value: results };
     }
 
-    const arrayBuffer = await response.arrayBuffer();
-    const tiff = await fromArrayBuffer(arrayBuffer);
-    const image = await tiff.getImage();
-    const rasters = await image.readRasters();
-    const elevationData = rasters[0] as
-      | Int16Array
-      | Float32Array
-      | Float64Array;
-
-    const width = image.getWidth();
-    const height = image.getHeight();
-    const results = new Map<number, number | null>();
+    const { elevationData, width, height } = tileData;
 
     for (const coord of batch.coordinates) {
       let elevation: number | null;
 
       if (batch.interpolate) {
-        // Use bilinear interpolation for accurate elevation at arbitrary coordinates
         elevation = bilinearInterpolate(
           elevationData,
           width,
@@ -311,7 +383,6 @@ export async function fetchTileAndExtractElevations(
           coord.pixelY,
         );
       } else {
-        // Use raw raster cell value (nearest neighbor)
         elevation = extractRawCellValue(
           elevationData,
           width,
@@ -358,7 +429,7 @@ export async function fetchElevationsFromAWSTerrainTiles(
   );
 
   // Fetch all tiles in parallel with concurrency limit
-  const CONCURRENCY_LIMIT = 10;
+  const CONCURRENCY_LIMIT = 25;
 
   for (let i = 0; i < batches.length; i += CONCURRENCY_LIMIT) {
     const batchSlice = batches.slice(i, i + CONCURRENCY_LIMIT);

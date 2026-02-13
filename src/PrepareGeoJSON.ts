@@ -40,6 +40,7 @@ import {
   accumulate,
   flatMap,
   flatMapArray,
+  logProgress,
   map,
   mapAsync,
 } from "./transforms/StreamTransforms";
@@ -132,6 +133,17 @@ export default async function prepare(paths: DataPaths, config: Config) {
         );
 
         try {
+          // Query total feature counts for progress reporting
+          const [skiAreaCount, runsCount, liftsCount, highwaysCount] =
+            await Promise.all([
+              dataStore.getInputSkiAreasCount(),
+              dataStore.getInputRunsCount(),
+              dataStore.getInputLiftsCount(),
+              process.env.COMPILE_HIGHWAY === "1"
+                ? dataStore.getInputHighwaysCount()
+                : Promise.resolve(0),
+            ]);
+
           await performanceMonitor.withOperation(
             "Processing ski areas",
             async () => {
@@ -151,60 +163,74 @@ export default async function prepare(paths: DataPaths, config: Config) {
                     dataStore.streamInputSkiAreas("skimap"),
                   ).pipe(flatMap(formatSkiArea(InputSkiAreaType.SKIMAP_ORG))),
                 ])
-                  .pipe(mapAsync(elevationTransform?.transform || null, 10))
+                  .pipe(mapAsync(elevationTransform?.transform || null, 30))
+                  .pipe(logProgress("Ski areas", skiAreaCount))
                   .pipe(toFeatureCollection())
                   .pipe(createWriteStream(paths.intermediate.skiAreas)),
               );
             },
           );
 
-          await performanceMonitor.withOperation(
-            "Processing runs",
-            async () => {
-              await StreamToPromise(
-                asyncGeneratorToStream(dataStore.streamInputRuns())
-                  .pipe(flatMapArray(formatRun))
-                  .pipe(map(addSkiAreaSites(siteProvider)))
-                  .pipe(accumulate(new RunNormalizerAccumulator()))
-                  .pipe(mapAsync(elevationTransform?.transform || null, 10))
-                  .pipe(toFeatureCollection())
-                  .pipe(createWriteStream(paths.intermediate.runs)),
-              );
-            },
-          );
+          // Process runs, lifts, and highways in parallel.
+          // They share the elevation processor and tile cache, maximizing
+          // cache hits for overlapping geographic areas.
+          const runsPromise = (async () => {
+            await performanceMonitor.withOperation(
+              "Processing runs",
+              async () => {
+                await StreamToPromise(
+                  asyncGeneratorToStream(dataStore.streamInputRuns())
+                    .pipe(flatMapArray(formatRun))
+                    .pipe(map(addSkiAreaSites(siteProvider)))
+                    .pipe(accumulate(new RunNormalizerAccumulator()))
+                    .pipe(mapAsync(elevationTransform?.transform || null, 30))
+                    .pipe(logProgress("Runs", runsCount))
+                    .pipe(toFeatureCollection())
+                    .pipe(createWriteStream(paths.intermediate.runs)),
+                );
+              },
+            );
+            // Process snow cover data after runs are written
+            await fetchSnowCoverIfEnabled(config, paths.intermediate.runs);
+          })();
 
-          // Process snow cover data after runs are written
-          await fetchSnowCoverIfEnabled(config, paths.intermediate.runs);
-
-          await performanceMonitor.withOperation(
+          const liftsPromise = performanceMonitor.withOperation(
             "Processing lifts",
             async () => {
               await StreamToPromise(
                 asyncGeneratorToStream(dataStore.streamInputLifts())
                   .pipe(flatMap(formatLift))
                   .pipe(map(addSkiAreaSites(siteProvider)))
-                  .pipe(mapAsync(elevationTransform?.transform || null, 10))
+                  .pipe(mapAsync(elevationTransform?.transform || null, 30))
+                  .pipe(logProgress("Lifts", liftsCount))
                   .pipe(toFeatureCollection())
                   .pipe(createWriteStream(paths.intermediate.lifts)),
               );
             },
           );
 
+          const parallelTasks: Promise<void>[] = [runsPromise, liftsPromise];
+
           // Process highways if enabled
           if (process.env.COMPILE_HIGHWAY === "1") {
-            await performanceMonitor.withOperation(
-              "Processing highways",
-              async () => {
-                await StreamToPromise(
-                  asyncGeneratorToStream(dataStore.streamInputHighways())
-                    .pipe(flatMapArray(formatHighway))
-                    .pipe(mapAsync(elevationTransform?.transform || null, 10))
-                    .pipe(toFeatureCollection())
-                    .pipe(createWriteStream(paths.intermediate.highways)),
-                );
-              },
+            parallelTasks.push(
+              performanceMonitor.withOperation(
+                "Processing highways",
+                async () => {
+                  await StreamToPromise(
+                    asyncGeneratorToStream(dataStore.streamInputHighways())
+                      .pipe(flatMapArray(formatHighway))
+                      .pipe(mapAsync(elevationTransform?.transform || null, 30))
+                      .pipe(logProgress("Highways", highwaysCount))
+                      .pipe(toFeatureCollection())
+                      .pipe(createWriteStream(paths.intermediate.highways)),
+                  );
+                },
+              ),
             );
           }
+
+          await Promise.all(parallelTasks);
         } finally {
           if (elevationTransform) {
             await elevationTransform.processor.close();
@@ -249,8 +275,9 @@ export default async function prepare(paths: DataPaths, config: Config) {
                       return skiArea;
                     }
                     return await processor.processFeature(skiArea);
-                  }, 10),
+                  }, 30),
                 )
+                .pipe(logProgress("Ski areas (re-elevation)", null))
                 .pipe(toFeatureCollection())
                 .pipe(createWriteStream(tempPath)),
             );
