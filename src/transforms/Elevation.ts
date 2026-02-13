@@ -176,7 +176,7 @@ export async function createElevationProcessor(
     },
     {
       batch: true,
-      maxBatchSize: 1000,
+      maxBatchSize: 5000,
       cache: false, // Disable in-memory caching - PostgresCache handles persistence
     },
   );
@@ -190,8 +190,11 @@ export async function createElevationProcessor(
       elevationServerConfig,
       coordinates,
     );
+    // Only compute elevation profiles for runs — other feature types (lifts,
+    // highways) don't store the profile, so fetching those points would be wasted work.
     const elevationProfileCoordinates: number[][] =
-      geometry.type === "LineString"
+      geometry.type === "LineString" &&
+      feature.properties.type === FeatureType.Run
         ? extractPointsForElevationProfile(geometry, elevationProfileResolution)
             .coordinates
         : [];
@@ -229,16 +232,18 @@ export async function createElevationProcessor(
     ).length;
 
     if (missingCoordCount > 0 || missingProfileCount > 0) {
-      const featureId = feature.properties.id || "unknown";
-      const featureName = feature.properties.name || "unnamed";
       const featureType = feature.properties.type;
-      const firstCoord = coordinates[0];
-      Logger.warn(
-        `Partial elevation data for ${featureType} "${featureName}" (id=${featureId}) ` +
-          `at [${firstCoord?.[0]?.toFixed(5)}, ${firstCoord?.[1]?.toFixed(5)}]: ` +
-          `${missingCoordCount}/${coordinateElevations.length} coordinates missing, ` +
-          `${missingProfileCount}/${profileElevations.length} profile points missing`,
-      );
+      throttledLogger.log(`partial-elevation-${featureType}`, () => {
+        const featureId = feature.properties.id || "unknown";
+        const featureName = feature.properties.name || "unnamed";
+        const firstCoord = coordinates[0];
+        Logger.warn(
+          `Partial elevation data for ${featureType} "${featureName}" (id=${featureId}) ` +
+            `at [${firstCoord?.[0]?.toFixed(5)}, ${firstCoord?.[1]?.toFixed(5)}]: ` +
+            `${missingCoordCount}/${coordinateElevations.length} coordinates missing, ` +
+            `${missingProfileCount}/${profileElevations.length} profile points missing`,
+        );
+      });
     }
 
     // Only create elevation profile if ALL profile points have data

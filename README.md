@@ -130,7 +130,9 @@ This will show you each cache table with its size and row count, and prompt you 
 
 Features will be augmented with elevation data.
 
-The processor supports multiple elevation sources:
+The processor supports multiple elevation sources. The default source is **AWS Terrain Tiles** (~30m resolution globally), which requires no configuration. Non-AWS sources automatically fall back to AWS Terrain Tiles for coordinates outside their coverage area.
+
+AWS Terrain Tiles are cached in-memory during a processing run (up to 500 tiles, ~250 MB) so that overlapping features in the same area do not trigger redundant HTTP requests. Individual elevation values are also cached in PostgreSQL for fast subsequent runs.
 
 **Racemap:**
 Set `ELEVATION_SERVER_URL` to an endpoint that can receive POST requests in the format of https://github.com/racemap/elevation-service.
