@@ -110,6 +110,8 @@ export interface Config {
   conflateElevation: boolean;
   // Skip processing and jump straight to PostGIS export
   exportOnly: boolean;
+  // Resume from highway association step (requires previous clustering run)
+  startAtAssociatingHighways: boolean;
   // Local OSM planet database for highway and peak queries (alternative to Overpass)
   localOSMDatabase: LocalOSMDatabaseConfig | null;
 }
@@ -231,6 +233,8 @@ export function configFromEnvironment(): Config {
     },
     conflateElevation: process.env.CONFLATE_ELEVATION !== "0",
     exportOnly: process.env.EXPORT_ONLY === "1",
+    startAtAssociatingHighways:
+      process.env.START_AT_ASSOCIATING_HIGHWAYS === "1",
     localOSMDatabase:
       process.env.COMPILE_LOCAL === "1"
         ? {

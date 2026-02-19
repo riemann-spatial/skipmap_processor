@@ -1,5 +1,4 @@
 import along from "@turf/along";
-import booleanIntersects from "@turf/boolean-intersects";
 import centroid from "@turf/centroid";
 import * as turf from "@turf/helpers";
 import length from "@turf/length";
@@ -12,17 +11,18 @@ import {
   SkiAreaFeature,
   SourceType,
 } from "openskidata-format";
-import StreamToPromise from "stream-to-promise";
 import {
   GeocodingServerConfig,
   PostgresConfig,
   SnowCoverConfig,
 } from "../Config";
-import { HighwayFeature, SkiAreaReference } from "../features/HighwayFeature";
-import { readGeoJSONFeatures } from "../io/GeoJSONReader";
-import toFeatureCollection from "../transforms/FeatureCollection";
+import {
+  HighwayFeature,
+  HighwayProperties,
+  SkiAreaReference,
+} from "../features/HighwayFeature";
+import { readGeoJSONFeaturesAsync } from "../io/GeoJSONReader";
 import { getPoints, getPositions } from "../transforms/GeoTransforms";
-import { filter, map } from "../transforms/StreamTransforms";
 import { Logger } from "../utils/Logger";
 import { ClusteringDatabase } from "./database/ClusteringDatabase";
 import { performanceMonitor } from "./database/PerformanceMonitor";
@@ -244,12 +244,12 @@ export class SkiAreaClusteringService {
   /**
    * Associate highways with ski areas and remove orphaned highways.
    *
-   * Highways are kept or discarded based on a dissolved 100m buffer around
+   * Highways are kept or discarded based on a dissolved buffer around
    * all surviving ski features (runs, lifts, ski areas) computed in PostGIS.
    * Highways outside this buffer are removed.
    *
-   * Ski area references on kept highways are set by polygon intersection
-   * with ski area polygons (same as before).
+   * Ski area references on kept highways are computed via a PostGIS
+   * spatial join (ST_Intersects) against ski area polygons.
    */
   async associateHighwaysWithSkiAreas(
     highwaysInputPath: string,
@@ -260,26 +260,37 @@ export class SkiAreaClusteringService {
     await performanceMonitor.withOperation(
       "Associating highways with ski areas",
       async () => {
-        // Compute a dissolved buffer around all surviving ski features
-        const skiFeatureBuffer =
-          await this.database.computeSkiFeatureBuffer(bufferMeters);
+        // Read highways into flat array
+        const highways: Array<{
+          id: string;
+          featureJson: string;
+          geometryJson: string;
+        }> = [];
+        for await (const feature of readGeoJSONFeaturesAsync(
+          highwaysInputPath,
+        )) {
+          const props = feature.properties as HighwayProperties;
+          highways.push({
+            id: props.id,
+            featureJson: JSON.stringify(feature),
+            geometryJson: JSON.stringify(feature.geometry),
+          });
+        }
+        Logger.log(`Read ${highways.length} highways from input`);
 
-        if (!skiFeatureBuffer) {
-          Logger.log(
-            "No ski features found, skipping highway association (all highways removed)",
-          );
-          await StreamToPromise(
-            readGeoJSONFeatures(highwaysInputPath)
-              .pipe(filter(() => false))
-              .pipe(toFeatureCollection())
-              .pipe(createWriteStream(highwaysOutputPath)),
-          );
+        if (highways.length === 0) {
+          Logger.log("No highways to process");
+          await writeEmptyFeatureCollection(highwaysOutputPath);
           return;
         }
 
-        // Load ski area polygons for associating highways with specific ski areas
-        const skiAreaPolygons: SkiAreaFeature[] = [];
-        for await (const feature of readGeoJSONFeaturesGenerator(
+        // Read ski area polygons
+        const skiAreaPolygons: Array<{
+          id: string;
+          name: string | null;
+          geometryJson: string;
+        }> = [];
+        for await (const feature of readGeoJSONFeaturesAsync(
           skiAreasOutputPath,
         )) {
           const skiArea = feature as SkiAreaFeature;
@@ -287,85 +298,78 @@ export class SkiAreaClusteringService {
             skiArea.geometry.type === "Polygon" ||
             skiArea.geometry.type === "MultiPolygon"
           ) {
-            skiAreaPolygons.push(skiArea);
+            skiAreaPolygons.push({
+              id: skiArea.properties.id,
+              name: skiArea.properties.name,
+              geometryJson: JSON.stringify(skiArea.geometry),
+            });
           }
         }
         Logger.log(
           `Loaded ${skiAreaPolygons.length} ski area polygons for reference assignment`,
         );
 
-        let keptCount = 0;
-        let droppedCount = 0;
+        try {
+          // Load into PostGIS temp tables and filter by buffer
+          const { keptCount, droppedCount } =
+            await this.database.prepareHighwayAssociation(
+              highways,
+              skiAreaPolygons,
+              bufferMeters,
+            );
 
-        await StreamToPromise(
-          readGeoJSONFeatures(highwaysInputPath)
-            .pipe(
-              filter((feature: GeoJSON.Feature) => {
-                try {
-                  const keep = booleanIntersects(
-                    feature.geometry,
-                    skiFeatureBuffer,
-                  );
-                  if (keep) {
-                    keptCount++;
-                  } else {
-                    droppedCount++;
-                  }
-                  return keep;
-                } catch (error) {
-                  droppedCount++;
-                  return false;
-                }
-              }),
-            )
-            .pipe(
-              map((feature: GeoJSON.Feature) => {
-                const highway = feature as HighwayFeature;
-                const matchingSkiAreas: SkiAreaReference[] = [];
+          // Stream results from PostGIS spatial join and write output
+          const outputStream = createWriteStream(highwaysOutputPath);
+          outputStream.write('{"type":"FeatureCollection","features":[\n');
+          let first = true;
+          let writtenCount = 0;
 
-                for (const skiArea of skiAreaPolygons) {
-                  try {
-                    if (booleanIntersects(highway.geometry, skiArea.geometry)) {
-                      matchingSkiAreas.push({
-                        properties: {
-                          id: skiArea.properties.id,
-                          name: skiArea.properties.name,
-                        },
-                      });
-                    }
-                  } catch (error) {
-                    continue;
-                  }
-                }
+          for await (const result of this.database.streamHighwaySkiAreaAssociations()) {
+            const feature = JSON.parse(result.featureJson) as HighwayFeature;
+            const matchingSkiAreas: SkiAreaReference[] =
+              result.matchingSkiAreas.map((sa) => ({
+                properties: { id: sa.id, name: sa.name },
+              }));
 
-                return {
-                  ...highway,
-                  properties: {
-                    ...highway.properties,
-                    skiAreas: matchingSkiAreas,
-                  },
-                };
-              }),
-            )
-            .pipe(toFeatureCollection())
-            .pipe(createWriteStream(highwaysOutputPath)),
-        );
+            const outputFeature = {
+              ...feature,
+              properties: {
+                ...feature.properties,
+                skiAreas: matchingSkiAreas,
+              },
+            };
 
-        Logger.log(
-          `Finished associating highways with ski areas: kept ${keptCount}, removed ${droppedCount} orphaned`,
-        );
+            if (!first) {
+              outputStream.write(",\n");
+            }
+            outputStream.write(JSON.stringify(outputFeature));
+            first = false;
+            writtenCount++;
+          }
+
+          outputStream.write("\n]}");
+          await new Promise<void>((resolve, reject) => {
+            outputStream.end(() => resolve());
+            outputStream.on("error", reject);
+          });
+
+          Logger.log(
+            `Finished associating highways with ski areas: kept ${keptCount}, removed ${droppedCount} orphaned, wrote ${writtenCount}`,
+          );
+        } finally {
+          await this.database.cleanupHighwayAssociation();
+        }
       },
     );
   }
 }
 
-async function* readGeoJSONFeaturesGenerator(
-  filePath: string,
-): AsyncGenerator<GeoJSON.Feature> {
-  const fs = await import("fs/promises");
-  const content = await fs.readFile(filePath, "utf-8");
-  const geoJSON = JSON.parse(content) as GeoJSON.FeatureCollection;
-  for (const feature of geoJSON.features) {
-    yield feature;
-  }
+async function writeEmptyFeatureCollection(path: string): Promise<void> {
+  const stream = createWriteStream(path);
+  stream.write('{"type":"FeatureCollection","features":[]}');
+  await new Promise<void>((resolve, reject) => {
+    stream.end(() => resolve());
+    stream.on("error", reject);
+  });
 }
+

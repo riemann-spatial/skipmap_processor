@@ -14,7 +14,10 @@ import StreamToPromise from "stream-to-promise";
 import { Config, ElevationServerConfig, PostgresConfig } from "./Config";
 import clusterSkiAreas from "./clustering/ClusterSkiAreas";
 import { DataPaths, getPath } from "./io/GeoJSONFiles";
-import { readGeoJSONFeatures } from "./io/GeoJSONReader";
+import {
+  readGeoJSONFeatures,
+  readGeoJSONFeaturesAsync,
+} from "./io/GeoJSONReader";
 import {
   convertGeoJSONToGeoPackage,
   convertHighwayGeoJSONToGeoPackage,
@@ -127,7 +130,37 @@ export default async function prepare(paths: DataPaths, config: Config) {
     }
   }
 
-  if (!config.exportOnly) {
+  if (config.startAtAssociatingHighways) {
+    Logger.log(
+      "START_AT_ASSOCIATING_HIGHWAYS: skipping to highway association",
+    );
+
+    // Validate required output files exist from previous run
+    for (const filePath of [
+      paths.output.skiAreas,
+      paths.output.runs,
+      paths.output.lifts,
+    ]) {
+      if (!existsSync(filePath)) {
+        throw new Error(`Required file not found: ${filePath}`);
+      }
+    }
+
+    if (
+      process.env.COMPILE_HIGHWAY === "1" &&
+      !existsSync(paths.intermediate.highways)
+    ) {
+      throw new Error(
+        `Intermediate highways file not found: ${paths.intermediate.highways}`,
+      );
+    }
+  }
+
+  const skipPhase2 = config.exportOnly || config.startAtAssociatingHighways;
+  const skipElevationReapply =
+    config.exportOnly || config.startAtAssociatingHighways;
+
+  if (!skipPhase2) {
     await performanceMonitor.withPhase(
       "Phase 2: GeoJSON Preparation",
       async () => {
@@ -299,7 +332,9 @@ export default async function prepare(paths: DataPaths, config: Config) {
     if (config.localOSMDatabase && existsSync(paths.intermediate.peaks)) {
       copyFileSync(paths.intermediate.peaks, paths.output.peaks);
     }
+  } // end if (!skipPhase2)
 
+  if (!config.exportOnly) {
     await performanceMonitor.withPhase("Phase 3: Clustering", async () => {
       await clusterSkiAreas(
         paths.intermediate,
@@ -309,7 +344,11 @@ export default async function prepare(paths: DataPaths, config: Config) {
       );
     });
 
-    if (config.conflateElevation && config.elevationServer) {
+    if (
+      !skipElevationReapply &&
+      config.conflateElevation &&
+      config.elevationServer
+    ) {
       await performanceMonitor.withOperation(
         "Re-applying elevation to ski area points",
         async () => {
@@ -589,61 +628,3 @@ async function exportFeaturesToPostGIS(
   return total;
 }
 
-async function* readGeoJSONFeaturesAsync(
-  filePath: string,
-): AsyncGenerator<GeoJSON.Feature> {
-  const stream = readGeoJSONFeatures(filePath);
-
-  // Convert Node.js readable stream to async generator with backpressure.
-  // We pause the stream after each data event so features don't accumulate
-  // in memory while the consumer is busy (e.g. awaiting a DB write).
-  const features: GeoJSON.Feature[] = [];
-  let resolve: (() => void) | null = null;
-  let reject: ((err: Error) => void) | null = null;
-  let done = false;
-  let error: Error | null = null;
-
-  stream.on("data", (feature: GeoJSON.Feature) => {
-    features.push(feature);
-    stream.pause();
-    if (resolve) {
-      resolve();
-      resolve = null;
-    }
-  });
-
-  stream.on("end", () => {
-    done = true;
-    if (resolve) {
-      resolve();
-      resolve = null;
-    }
-  });
-
-  stream.on("error", (err: Error) => {
-    error = err;
-    done = true;
-    if (reject) {
-      reject(err);
-      reject = null;
-    }
-  });
-
-  while (!done || features.length > 0) {
-    if (features.length > 0) {
-      yield features.shift()!;
-      if (features.length === 0 && !done) {
-        stream.resume();
-      }
-    } else if (!done) {
-      stream.resume();
-      await new Promise<void>((res, rej) => {
-        resolve = res;
-        reject = rej;
-      });
-      if (error) {
-        throw error;
-      }
-    }
-  }
-}

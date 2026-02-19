@@ -42,7 +42,7 @@ export class PostgreSQLClusteringDatabase implements ClusteringDatabase {
     this.databaseName = postgresConfig.processingDatabase;
   }
 
-  async initialize(): Promise<void> {
+  async initialize(options?: { skipTruncate?: boolean }): Promise<void> {
     const poolConfig = getPostgresPoolConfig(
       this.databaseName,
       this.postgresConfig,
@@ -66,7 +66,11 @@ export class PostgreSQLClusteringDatabase implements ClusteringDatabase {
 
     await this.enablePostGIS();
     await this.createTables();
-    await this.truncateObjectsTable();
+    if (!options?.skipTruncate) {
+      await this.truncateObjectsTable();
+    } else {
+      Logger.log("Skipping truncate: reusing objects table from previous run");
+    }
     await this.createIndexes();
 
     Logger.log(
@@ -648,5 +652,189 @@ export class PostgreSQLClusteringDatabase implements ClusteringDatabase {
     }
 
     return rows[0].buffer_geojson;
+  }
+
+  async prepareHighwayAssociation(
+    highways: Array<{
+      id: string;
+      featureJson: string;
+      geometryJson: string;
+    }>,
+    skiAreaPolygons: Array<{
+      id: string;
+      name: string | null;
+      geometryJson: string;
+    }>,
+    bufferMeters: number,
+  ): Promise<{ keptCount: number; droppedCount: number }> {
+    const pool = this.ensureInitialized();
+
+    // Create temp tables
+    await pool.query(SQL.CREATE_TEMP_HIGHWAYS_TABLE);
+    await pool.query(SQL.CREATE_TEMP_SKI_AREA_POLYGONS_TABLE);
+    await pool.query(SQL.CREATE_TEMP_BUFFER_TABLE);
+
+    // Compute and store buffer geometry
+    Logger.log("Computing ski feature buffer for highway filtering...");
+    const bufferRows = await this.executeQuery<
+      Array<{ buffer_geojson: string | null }>
+    >(
+      `SELECT ST_AsGeoJSON(
+         ST_Transform(
+           ST_Simplify(
+             ST_Union(ST_Buffer(ST_Transform(geom, 3857), $1)),
+             $1 * 0.1
+           ),
+           4326
+         )
+       ) AS buffer_geojson
+       FROM objects
+       WHERE geom IS NOT NULL`,
+      [bufferMeters],
+    );
+
+    if (bufferRows.length === 0 || !bufferRows[0].buffer_geojson) {
+      Logger.log("No ski features found, no highways to keep");
+      return { keptCount: 0, droppedCount: highways.length };
+    }
+
+    await pool.query(
+      `INSERT INTO temp_ski_buffer (geom)
+       VALUES (ST_MakeValid(ST_Force2D(ST_GeomFromGeoJSON($1)), 'method=structure'))`,
+      [bufferRows[0].buffer_geojson],
+    );
+    await pool.query(
+      "CREATE INDEX IF NOT EXISTS idx_temp_ski_buffer_geom ON temp_ski_buffer USING GIST (geom)",
+    );
+
+    // Batch-insert highways
+    Logger.log(`Inserting ${highways.length} highways into temp table...`);
+    const highwayBatchSize = 500;
+    for (let i = 0; i < highways.length; i += highwayBatchSize) {
+      const batch = highways.slice(i, i + highwayBatchSize);
+      await this.executeTransaction(async (client) => {
+        for (const hw of batch) {
+          await client.query(
+            `INSERT INTO temp_highways (id, feature, geom)
+             VALUES ($1, $2::jsonb, ST_MakeValid(ST_Force2D(ST_GeomFromGeoJSON($3)), 'method=structure'))
+             ON CONFLICT (id) DO NOTHING`,
+            [hw.id, hw.featureJson, hw.geometryJson],
+          );
+        }
+      });
+    }
+
+    // Delete highways outside the buffer
+    Logger.log("Filtering highways outside ski feature buffer...");
+    const deleteResult = await pool.query(
+      `DELETE FROM temp_highways h
+       WHERE NOT EXISTS (
+         SELECT 1 FROM temp_ski_buffer b WHERE ST_Intersects(h.geom, b.geom)
+       )`,
+    );
+    const droppedCount = deleteResult.rowCount ?? 0;
+    const keptCount = highways.length - droppedCount;
+    Logger.log(
+      `Highway buffer filter: kept ${keptCount}, dropped ${droppedCount}`,
+    );
+
+    // Batch-insert ski area polygons
+    Logger.log(
+      `Inserting ${skiAreaPolygons.length} ski area polygons into temp table...`,
+    );
+    const polygonBatchSize = 500;
+    for (let i = 0; i < skiAreaPolygons.length; i += polygonBatchSize) {
+      const batch = skiAreaPolygons.slice(i, i + polygonBatchSize);
+      await this.executeTransaction(async (client) => {
+        for (const sa of batch) {
+          await client.query(
+            `INSERT INTO temp_ski_area_polygons (id, name, geom)
+             VALUES ($1, $2, ST_MakeValid(ST_Force2D(ST_GeomFromGeoJSON($3)), 'method=structure'))
+             ON CONFLICT (id) DO NOTHING`,
+            [sa.id, sa.name, sa.geometryJson],
+          );
+        }
+      });
+    }
+
+    // Create GiST indexes on both temp tables
+    await pool.query(
+      "CREATE INDEX IF NOT EXISTS idx_temp_highways_geom ON temp_highways USING GIST (geom)",
+    );
+    await pool.query(
+      "CREATE INDEX IF NOT EXISTS idx_temp_ski_area_polygons_geom ON temp_ski_area_polygons USING GIST (geom)",
+    );
+
+    // Analyze for query planner
+    await pool.query("ANALYZE temp_highways");
+    await pool.query("ANALYZE temp_ski_area_polygons");
+
+    Logger.log("Highway association preparation complete");
+    return { keptCount, droppedCount };
+  }
+
+  async *streamHighwaySkiAreaAssociations(): AsyncGenerator<{
+    featureJson: string;
+    matchingSkiAreas: Array<{ id: string; name: string | null }>;
+  }> {
+    const pool = this.ensureInitialized();
+    const fetchSize = 1000;
+    const cursorName = "highway_ski_area_cursor";
+    let totalYielded = 0;
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query(
+        `DECLARE ${cursorName} CURSOR FOR ${SQL.HIGHWAY_SKI_AREA_SPATIAL_JOIN}`,
+      );
+
+      while (true) {
+        const result = await client.query(
+          `FETCH ${fetchSize} FROM ${cursorName}`,
+        );
+
+        if (result.rows.length === 0) {
+          break;
+        }
+
+        for (const row of result.rows) {
+          yield {
+            featureJson: row.feature_json,
+            matchingSkiAreas: row.matching_ski_areas,
+          };
+        }
+
+        totalYielded += result.rows.length;
+        if (totalYielded % 10000 === 0) {
+          Logger.log(
+            `Highway association progress: ${totalYielded} highways processed`,
+          );
+        }
+
+        if (result.rows.length < fetchSize) {
+          break;
+        }
+      }
+
+      await client.query(`CLOSE ${cursorName}`);
+      await client.query("COMMIT");
+      Logger.log(
+        `Highway association complete: ${totalYielded} highways processed`,
+      );
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => {});
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async cleanupHighwayAssociation(): Promise<void> {
+    const pool = this.ensureInitialized();
+    await pool.query("DROP TABLE IF EXISTS temp_highways");
+    await pool.query("DROP TABLE IF EXISTS temp_ski_area_polygons");
+    await pool.query("DROP TABLE IF EXISTS temp_ski_buffer");
+    Logger.log("Cleaned up highway association temp tables");
   }
 }

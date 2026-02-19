@@ -7,6 +7,13 @@ export interface ClusterBuffer {
 
 const DEFAULT_BUFFER_METERS = 1000;
 
+/**
+ * Compute buffered envelopes around clusters of ski features.
+ *
+ * Features are grouped by ST_ClusterDBSCAN, buffered, dissolved, and then
+ * decomposed with ST_Dump so each returned row is a single Polygon rather
+ * than a potentially huge MultiPolygon spanning an entire mountain range.
+ */
 export async function computeClusterBuffers(
   processingPool: Pool,
   bufferMeters: number = DEFAULT_BUFFER_METERS,
@@ -28,16 +35,19 @@ export async function computeClusterBuffers(
              ST_ClusterDBSCAN(geometry, eps := 0.05, minpoints := 1)
                OVER () AS cluster_id
       FROM valid_features
-    )
-    SELECT cluster_id,
-           ST_AsGeoJSON(
+    ),
+    cluster_unions AS (
+      SELECT cluster_id,
              ST_Transform(
                ST_Union(ST_Buffer(ST_Transform(geometry, 3857), $1)),
                4326
-             )
-           )::json AS buffer_geojson
-    FROM clustered
-    GROUP BY cluster_id
+             ) AS geom
+      FROM clustered
+      GROUP BY cluster_id
+    )
+    SELECT cluster_id,
+           ST_AsGeoJSON((ST_Dump(geom)).geom)::json AS buffer_geojson
+    FROM cluster_unions
   `,
     [bufferMeters],
   );

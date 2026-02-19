@@ -72,6 +72,18 @@ function toString(value: unknown): string | null {
   return null;
 }
 
+/**
+ * Deduplicate features by feature_id within a batch.
+ * Last occurrence wins, matching ON CONFLICT DO UPDATE semantics.
+ */
+function deduplicateBatch(features: OutputFeature[]): OutputFeature[] {
+  const seen = new Map<string, OutputFeature>();
+  for (const feature of features) {
+    seen.set(feature.feature_id, feature);
+  }
+  return seen.size === features.length ? features : Array.from(seen.values());
+}
+
 export class PostGISDataStore {
   private pool: Pool;
   private config: PostgresConfig;
@@ -549,7 +561,7 @@ export class PostGISDataStore {
     try {
       const batchSize = 500; // Smaller batch due to more columns
       for (let i = 0; i < features.length; i += batchSize) {
-        const batch = features.slice(i, i + batchSize);
+        const batch = deduplicateBatch(features.slice(i, i + batchSize));
         const values: unknown[] = [];
         const placeholders: string[] = [];
 
@@ -657,7 +669,7 @@ export class PostGISDataStore {
     try {
       const batchSize = 500;
       for (let i = 0; i < features.length; i += batchSize) {
-        const batch = features.slice(i, i + batchSize);
+        const batch = deduplicateBatch(features.slice(i, i + batchSize));
         const values: unknown[] = [];
         const placeholders: string[] = [];
 
@@ -747,7 +759,7 @@ export class PostGISDataStore {
     try {
       const batchSize = 500;
       for (let i = 0; i < features.length; i += batchSize) {
-        const batch = features.slice(i, i + batchSize);
+        const batch = deduplicateBatch(features.slice(i, i + batchSize));
         const values: unknown[] = [];
         const placeholders: string[] = [];
 
@@ -819,7 +831,7 @@ export class PostGISDataStore {
     try {
       const batchSize = 500;
       for (let i = 0; i < features.length; i += batchSize) {
-        const batch = features.slice(i, i + batchSize);
+        const batch = deduplicateBatch(features.slice(i, i + batchSize));
         const values: unknown[] = [];
         const placeholders: string[] = [];
 
@@ -901,7 +913,7 @@ export class PostGISDataStore {
     try {
       const batchSize = 500;
       for (let i = 0; i < features.length; i += batchSize) {
-        const batch = features.slice(i, i + batchSize);
+        const batch = deduplicateBatch(features.slice(i, i + batchSize));
         const values: unknown[] = [];
         const placeholders: string[] = [];
 

@@ -14,7 +14,7 @@ export interface ClusteringDatabase {
   /**
    * Initialize the database connection and create necessary collections/tables
    */
-  initialize(): Promise<void>;
+  initialize(options?: { skipTruncate?: boolean }): Promise<void>;
 
   /**
    * Clean up and close database connection
@@ -134,6 +134,39 @@ export interface ClusteringDatabase {
   computeSkiFeatureBuffer(
     bufferMeters: number,
   ): Promise<GeoJSON.Geometry | null>;
+
+  /**
+   * Load highways and ski area polygons into temp tables for PostGIS spatial join.
+   * Filters highways against the ski feature buffer and creates spatial indexes.
+   * Returns counts of kept and dropped highways.
+   */
+  prepareHighwayAssociation(
+    highways: Array<{
+      id: string;
+      featureJson: string;
+      geometryJson: string;
+    }>,
+    skiAreaPolygons: Array<{
+      id: string;
+      name: string | null;
+      geometryJson: string;
+    }>,
+    bufferMeters: number,
+  ): Promise<{ keptCount: number; droppedCount: number }>;
+
+  /**
+   * Stream highway-ski area associations computed via PostGIS spatial join.
+   * Each result contains the highway feature JSON and its matching ski areas.
+   */
+  streamHighwaySkiAreaAssociations(): AsyncGenerator<{
+    featureJson: string;
+    matchingSkiAreas: Array<{ id: string; name: string | null }>;
+  }>;
+
+  /**
+   * Drop temp tables created by prepareHighwayAssociation.
+   */
+  cleanupHighwayAssociation(): Promise<void>;
 }
 
 export interface GetSkiAreasOptions {

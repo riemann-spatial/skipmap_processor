@@ -2,7 +2,7 @@ import bboxPolygon from "@turf/bbox-polygon";
 import booleanContains from "@turf/boolean-contains";
 import { Readable } from "node:stream";
 import * as JSONStream from "JSONStream";
-import { Config, configFromEnvironment, PostgresConfig } from "../Config";
+import { Config, configFromEnvironment } from "../Config";
 import { performanceMonitor } from "../clustering/database/PerformanceMonitor";
 import { InputSkiMapOrgSkiAreaFeature } from "../features/SkiAreaFeature";
 import { Logger } from "../utils/Logger";
@@ -16,7 +16,13 @@ import {
   skiMapSkiAreasURL,
 } from "./DownloadURLs";
 import { fetchHighwaysFromLocalDB } from "./LocalHighwayProvider";
+import { fetchLiftsFromLocalDB } from "./LocalLiftProvider";
 import { fetchPeaksFromLocalDB } from "./LocalPeakProvider";
+import { fetchRunsFromLocalDB } from "./LocalRunProvider";
+import {
+  fetchSkiAreasFromLocalDB,
+  fetchSkiAreaSitesFromLocalDB,
+} from "./LocalSkiAreaProvider";
 import { convertOSMToGeoJSON } from "./OSMToGeoJSONConverter";
 import {
   getPostGISDataStore,
@@ -34,25 +40,33 @@ export default async function downloadAndConvertToGeoJSON(
     const config = configFromEnvironment();
     const dataStore = getPostGISDataStore(config.postgresCache);
 
-    const overpassEndpoints = getOverpassEndpoints();
-
-    // Serialize downloads using the same endpoint so we don't get rate limited by the Overpass API
     await performanceMonitor.withOperation("Downloading OSM data", async () => {
-      const downloads: Promise<void>[] = [
-        downloadAndStoreRuns(overpassEndpoints, bbox, dataStore),
-        (async () => {
-          await downloadAndStoreLifts(overpassEndpoints, bbox, dataStore);
-          await downloadAndStoreSkiAreas(overpassEndpoints, bbox, dataStore);
-          await downloadAndStoreSkiAreaSites(
-            overpassEndpoints,
-            bbox,
-            dataStore,
-          );
-        })(),
-        downloadAndStoreSkiMapOrgSkiAreas(bbox, dataStore),
-      ];
-
-      await Promise.all(downloads);
+      if (config.localOSMDatabase) {
+        // Local OSM planet DB — all core ski data + skimap.org
+        await Promise.all([
+          downloadAndStoreRunsFromLocalDB(config, dataStore),
+          downloadAndStoreLiftsFromLocalDB(config, dataStore),
+          downloadAndStoreSkiAreasFromLocalDB(config, dataStore),
+          downloadAndStoreSkiAreaSitesFromLocalDB(config, dataStore),
+          downloadAndStoreSkiMapOrgSkiAreas(bbox, dataStore),
+        ]);
+      } else {
+        // Overpass API fallback
+        const overpassEndpoints = getOverpassEndpoints();
+        await Promise.all([
+          downloadAndStoreRuns(overpassEndpoints, bbox, dataStore),
+          (async () => {
+            await downloadAndStoreLifts(overpassEndpoints, bbox, dataStore);
+            await downloadAndStoreSkiAreas(overpassEndpoints, bbox, dataStore);
+            await downloadAndStoreSkiAreaSites(
+              overpassEndpoints,
+              bbox,
+              dataStore,
+            );
+          })(),
+          downloadAndStoreSkiMapOrgSkiAreas(bbox, dataStore),
+        ]);
+      }
 
       // Highway download runs after other downloads so ski features are in PostGIS
       // (needed for local DB buffer query, and serializing also avoids Overpass rate limits)
@@ -60,6 +74,7 @@ export default async function downloadAndConvertToGeoJSON(
         if (config.localOSMDatabase) {
           await downloadAndStoreHighwaysFromLocalDB(config, dataStore);
         } else {
+          const overpassEndpoints = getOverpassEndpoints();
           await downloadAndStoreHighways(overpassEndpoints, bbox, dataStore);
         }
       }
@@ -235,6 +250,42 @@ async function downloadAndStorePeaksFromLocalDB(
     dataStore,
     config.localOSMDatabase!.bufferMeters,
   );
+}
+
+async function downloadAndStoreRunsFromLocalDB(
+  config: Config,
+  dataStore: PostGISDataStore,
+): Promise<void> {
+  Logger.log("Fetching runs from local OSM planet database...");
+  await fetchRunsFromLocalDB(config.localOSMDatabase!, dataStore, config.bbox);
+}
+
+async function downloadAndStoreLiftsFromLocalDB(
+  config: Config,
+  dataStore: PostGISDataStore,
+): Promise<void> {
+  Logger.log("Fetching lifts from local OSM planet database...");
+  await fetchLiftsFromLocalDB(config.localOSMDatabase!, dataStore, config.bbox);
+}
+
+async function downloadAndStoreSkiAreasFromLocalDB(
+  config: Config,
+  dataStore: PostGISDataStore,
+): Promise<void> {
+  Logger.log("Fetching ski areas from local OSM planet database...");
+  await fetchSkiAreasFromLocalDB(
+    config.localOSMDatabase!,
+    dataStore,
+    config.bbox,
+  );
+}
+
+async function downloadAndStoreSkiAreaSitesFromLocalDB(
+  config: Config,
+  dataStore: PostGISDataStore,
+): Promise<void> {
+  Logger.log("Fetching ski area sites from local OSM planet database...");
+  await fetchSkiAreaSitesFromLocalDB(config.localOSMDatabase!, dataStore);
 }
 
 function osmFeatureToInputFeature(feature: GeoJSON.Feature): InputFeature {

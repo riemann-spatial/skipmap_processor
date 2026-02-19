@@ -12,23 +12,28 @@ export default async function clusterSkiAreas(
   config: Config,
   processHighways: boolean = false,
 ): Promise<void> {
+  const skipToHighways = config.startAtAssociatingHighways;
   const database = new PostgreSQLClusteringDatabase(config.postgresCache);
   const clusteringService = new SkiAreaClusteringService(database);
 
   try {
-    await database.initialize();
-
-    await clusteringService.clusterSkiAreas(
-      intermediatePaths.skiAreas,
-      intermediatePaths.lifts,
-      intermediatePaths.runs,
-      outputPaths.skiAreas,
-      outputPaths.lifts,
-      outputPaths.runs,
-      config.geocodingServer,
-      config.snowCover,
-      config.postgresCache,
+    await database.initialize(
+      skipToHighways ? { skipTruncate: true } : undefined,
     );
+
+    if (!skipToHighways) {
+      await clusteringService.clusterSkiAreas(
+        intermediatePaths.skiAreas,
+        intermediatePaths.lifts,
+        intermediatePaths.runs,
+        outputPaths.skiAreas,
+        outputPaths.lifts,
+        outputPaths.runs,
+        config.geocodingServer,
+        config.snowCover,
+        config.postgresCache,
+      );
+    }
 
     // Process highways if enabled - associate with ski areas
     if (processHighways) {

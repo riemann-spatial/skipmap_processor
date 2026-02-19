@@ -157,7 +157,7 @@ describe("PostgreSQLClusteringDatabase", () => {
     await database.markObjectsAsPartOfSkiArea(
       "test-ski-area",
       ["unassigned-run-1"],
-      false,
+      "proximity",
     );
 
     // Should return null now (no more unassigned runs)

@@ -106,6 +106,38 @@ export const SQL = {
     FROM union_result
     CROSS JOIN ski_area_geometry
   `,
+
+  CREATE_TEMP_HIGHWAYS_TABLE: `
+    CREATE TEMP TABLE IF NOT EXISTS temp_highways (
+      id TEXT PRIMARY KEY,
+      feature JSONB NOT NULL,
+      geom GEOMETRY(Geometry, 4326)
+    )
+  `,
+
+  CREATE_TEMP_SKI_AREA_POLYGONS_TABLE: `
+    CREATE TEMP TABLE IF NOT EXISTS temp_ski_area_polygons (
+      id TEXT PRIMARY KEY,
+      name TEXT,
+      geom GEOMETRY(Geometry, 4326)
+    )
+  `,
+
+  CREATE_TEMP_BUFFER_TABLE: `
+    CREATE TEMP TABLE IF NOT EXISTS temp_ski_buffer (
+      geom GEOMETRY(Geometry, 4326)
+    )
+  `,
+
+  HIGHWAY_SKI_AREA_SPATIAL_JOIN: `
+    SELECT h.id, h.feature::text AS feature_json,
+      COALESCE(json_agg(json_build_object('id', sa.id, 'name', sa.name))
+        FILTER (WHERE sa.id IS NOT NULL), '[]'::json) AS matching_ski_areas
+    FROM temp_highways h
+    LEFT JOIN temp_ski_area_polygons sa ON ST_Intersects(h.geom, sa.geom)
+    GROUP BY h.id, h.feature
+    ORDER BY h.id
+  `,
 } as const;
 
 /**
