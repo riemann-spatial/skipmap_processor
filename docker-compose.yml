@@ -19,7 +19,7 @@ services:
       - POSTGRES_PORT=5432
       - POSTGRES_USER=osm
       - POSTGRES_PASSWORD=osm
-      - DBNAME=GlobalSkiData_HW
+      - DBNAME=GlobalSkiData_HW_full
       # - BBOX=[10.74827, 46.81017, 11.08733, 47.00510] # Ötztal large
       # - BBOX=[37.370679, 56.181660, 37.656116, 56.299853] # Moscow region, Russia
       #- BBOX=[6.47996, 45.21026, 6.67171, 45.45132] # Savoie, France
@@ -28,14 +28,15 @@ services:
 
       # Set to 1 to enable highway (road/walkway) compilation
       - COMPILE_HIGHWAY=1
-      # Local OSM planet database for highway queries (alternative to Overpass)
-      # Requires COMPILE_HIGHWAY=1
-      - COMPILE_HIGHWAY_LOCAL=1
+      # Local OSM planet database for highway and peak queries (alternative to Overpass)
+      # Requires COMPILE_HIGHWAY=1 for highways; peaks are always loaded
+      - COMPILE_LOCAL=1
       - LOCAL_OSM_DB_HOST=192.168.8.199
       - LOCAL_OSM_DB_PORT=5432
       - LOCAL_OSM_DB_NAME=planet
       - LOCAL_OSM_DB_USER=osm
       - LOCAL_OSM_DB_PASSWORD=osm
+      - LOCAL_OSM_BUFFER_METERS=100 # Buffer distance in meters around ski feature clusters (default: 1000)
 
       - OUTPUT_TO_FILES=0
       - OUTPUT_TO_POSTGIS=1
@@ -68,6 +69,8 @@ services:
       # Set to 1 to keep polygon ski areas even when >50% of runs/lifts are in site=piste relations
       - KEEP_LANDUSE_WITH_SITE_OVERLAP=1
       - EXPORT_ONLY=0
+      # Set to 1 to skip to highway association (requires previous clustering run)
+      - START_AT_ASSOCIATING_HIGHWAYS=0
 
 volumes:
   node_modules:

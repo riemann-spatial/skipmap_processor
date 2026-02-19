@@ -119,7 +119,7 @@ export function logProgress(label: string, total: number | null): Transform {
       processed++;
 
       if (total !== null && total > 0) {
-        const pctStep = Math.floor((processed / total) * 100 / PCT_STEP);
+        const pctStep = Math.floor(((processed / total) * 100) / PCT_STEP);
         if (pctStep > lastLoggedPctStep) {
           lastLoggedPctStep = pctStep;
           const pct = ((processed / total) * 100).toFixed(1);

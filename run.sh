@@ -11,6 +11,11 @@ EXPORT_ONLY=${EXPORT_ONLY:-false}
 if [ "$EXPORT_ONLY" = "1" ]; then
     EXPORT_ONLY=true
 fi
+# Allow START_AT_ASSOCIATING_HIGHWAYS to be set via environment variable
+START_AT_ASSOCIATING_HIGHWAYS=${START_AT_ASSOCIATING_HIGHWAYS:-false}
+if [ "$START_AT_ASSOCIATING_HIGHWAYS" = "1" ]; then
+    START_AT_ASSOCIATING_HIGHWAYS=true
+fi
 
 # Parse command line options
 while [[ "$#" -gt 0 ]]; do
@@ -41,6 +46,10 @@ if [ "$EXPORT_ONLY" = true ]; then
     echo "Export-only mode: skipping database init and download"
     echo "Preparing OpenSkiData (export only)..."
     EXPORT_ONLY=1 npm run prepare-geojson
+elif [ "$START_AT_ASSOCIATING_HIGHWAYS" = true ]; then
+    echo "Resuming from highway association: skipping database init and download"
+    echo "Preparing OpenSkiData (highway association only)..."
+    START_AT_ASSOCIATING_HIGHWAYS=1 npm run prepare-geojson
 else
     # Initialize database (creates/recreates processing database with schema)
     echo "Initializing database..."

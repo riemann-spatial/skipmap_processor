@@ -23,6 +23,7 @@ function createTestConfig(): Config {
     output: { toFiles: true, toPostgis: false },
     conflateElevation: true,
     exportOnly: false,
+    startAtAssociatingHighways: false,
     localOSMDatabase: null,
   };
 }
