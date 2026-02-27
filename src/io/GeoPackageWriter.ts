@@ -18,7 +18,8 @@ import { pipeline } from "stream/promises";
 import { HighwayProperties } from "../features/HighwayFeature";
 import { PeakProperties } from "../features/PeakFeature";
 import { Logger } from "../utils/Logger";
-import { readGeoJSONFeatures } from "./GeoJSONReader";
+import { asyncGeneratorToStream } from "../utils/StreamUtils";
+import { PostGISDataStore } from "./PostGISDataStore";
 
 // Type-safe column definition
 interface ColumnDefinition<T> {
@@ -752,7 +753,7 @@ export class GeoPackageWriter {
 }
 
 export async function convertGeoJSONToGeoPackage<T extends FeatureType>(
-  geoJSONPath: string,
+  dataStore: PostGISDataStore,
   geoPackagePath: string,
   layerName: string,
   featureType: T,
@@ -763,8 +764,21 @@ export async function convertGeoJSONToGeoPackage<T extends FeatureType>(
   const BATCH_SIZE = 1000;
   let batch: Feature<GeoJSON.Geometry, FeaturePropertiesMap[T]>[] = [];
 
+  const streamForType = () => {
+    switch (featureType) {
+      case FeatureType.SkiArea:
+        return asyncGeneratorToStream(dataStore.streamOutputSkiAreas());
+      case FeatureType.Lift:
+        return asyncGeneratorToStream(dataStore.streamOutputLifts());
+      case FeatureType.Run:
+        return asyncGeneratorToStream(dataStore.streamOutputRuns());
+      default:
+        throw new Error(`Unsupported feature type: ${featureType}`);
+    }
+  };
+
   await pipeline(
-    readGeoJSONFeatures(geoJSONPath),
+    streamForType(),
     new Transform({
       objectMode: true,
       async transform(
@@ -812,7 +826,7 @@ export async function convertGeoJSONToGeoPackage<T extends FeatureType>(
  * Separate function since Highway is not part of openskidata-format FeatureType.
  */
 export async function convertHighwayGeoJSONToGeoPackage(
-  geoJSONPath: string,
+  dataStore: PostGISDataStore,
   geoPackagePath: string,
   layerName: string,
 ): Promise<void> {
@@ -823,7 +837,7 @@ export async function convertHighwayGeoJSONToGeoPackage(
   let batch: Feature<GeoJSON.Geometry, HighwayProperties>[] = [];
 
   await pipeline(
-    readGeoJSONFeatures(geoJSONPath),
+    asyncGeneratorToStream(dataStore.streamOutputHighways()),
     new Transform({
       objectMode: true,
       async transform(
@@ -1132,7 +1146,7 @@ const PEAK_SCHEMA: ColumnDefinition<PeakProperties>[] = [
  * Separate function since Peak is not part of openskidata-format FeatureType.
  */
 export async function convertPeakGeoJSONToGeoPackage(
-  geoJSONPath: string,
+  dataStore: PostGISDataStore,
   geoPackagePath: string,
   layerName: string,
 ): Promise<void> {
@@ -1143,7 +1157,7 @@ export async function convertPeakGeoJSONToGeoPackage(
   let batch: Feature<GeoJSON.Geometry, PeakProperties>[] = [];
 
   await pipeline(
-    readGeoJSONFeatures(geoJSONPath),
+    asyncGeneratorToStream(dataStore.streamOutputPeaks()),
     new Transform({
       objectMode: true,
       async transform(

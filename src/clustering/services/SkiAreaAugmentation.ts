@@ -9,6 +9,7 @@ import {
   PostgresConfig,
   SnowCoverConfig,
 } from "../../Config";
+import { PostGISDataStore } from "../../io/PostGISDataStore";
 import { skiAreaStatistics } from "../../statistics/SkiAreaStatistics";
 import Geocoder from "../../transforms/Geocoder";
 import { sortPlaces, uniquePlaces } from "../../transforms/PlaceUtils";
@@ -16,9 +17,9 @@ import { Logger } from "../../utils/Logger";
 import { isPlaceholderGeometry } from "../../utils/PlaceholderSiteGeometry";
 import { ClusteringDatabase } from "../database/ClusteringDatabase";
 import { performanceMonitor } from "../database/PerformanceMonitor";
-import augmentGeoJSONFeatures from "../GeoJSONAugmenter";
+import augmentFeatures from "../FeatureAugmenter";
 import { LiftObject, MapObject, RunObject, SkiAreaObject } from "../MapObject";
-import exportSkiAreasGeoJSON from "../SkiAreasExporter";
+import exportSkiAreas from "../SkiAreasExporter";
 
 export class SkiAreaAugmentation {
   constructor(private database: ClusteringDatabase) {}
@@ -228,20 +229,16 @@ export class SkiAreaAugmentation {
     }
   }
 
-  async augmentGeoJSONFeatures(
-    inputPath: string,
-    outputPath: string,
+  async augmentFeatures(
+    dataStore: PostGISDataStore,
     featureType: FeatureType,
     snowCoverConfig: SnowCoverConfig | null,
     postgresConfig: PostgresConfig,
   ): Promise<void> {
-    Logger.log(
-      `Augmenting ${featureType} features from ${inputPath} to ${outputPath}`,
-    );
+    Logger.log(`Augmenting ${featureType} features from processing to output tables`);
 
-    await augmentGeoJSONFeatures(
-      inputPath,
-      outputPath,
+    await augmentFeatures(
+      dataStore,
       this.database,
       featureType,
       snowCoverConfig,
@@ -249,8 +246,8 @@ export class SkiAreaAugmentation {
     );
   }
 
-  async exportSkiAreasGeoJSON(outputPath: string): Promise<void> {
-    Logger.log(`Exporting ski areas to ${outputPath}`);
-    await exportSkiAreasGeoJSON(outputPath, this.database);
+  async exportSkiAreas(dataStore: PostGISDataStore): Promise<void> {
+    Logger.log("Exporting ski areas to output table");
+    await exportSkiAreas(dataStore, this.database);
   }
 }

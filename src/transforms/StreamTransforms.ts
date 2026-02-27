@@ -108,7 +108,11 @@ export function accumulate<X, Y>(accumulator: Accumulator<X, Y>): Duplex {
   return duplex;
 }
 
-export function logProgress(label: string, total: number | null): Transform {
+export function logProgress(
+  label: string,
+  total: number | null,
+  stage: string = "processed",
+): Transform {
   let processed = 0;
   let lastLoggedPctStep = -1;
   const PCT_STEP = 5;
@@ -123,7 +127,7 @@ export function logProgress(label: string, total: number | null): Transform {
         if (pctStep > lastLoggedPctStep) {
           lastLoggedPctStep = pctStep;
           const pct = ((processed / total) * 100).toFixed(1);
-          Logger.log(`${label}: ${processed}/${total} (${pct}%)`);
+          Logger.log(`${label}: ${stage} ${processed}/${total} (${pct}%)`);
         }
       }
 
@@ -131,9 +135,9 @@ export function logProgress(label: string, total: number | null): Transform {
     },
     flush(done) {
       if (total !== null && total > 0) {
-        Logger.log(`${label}: done — ${processed}/${total}`);
+        Logger.log(`${label}: ${stage} ${processed}/${total} — done`);
       } else {
-        Logger.log(`${label}: done — ${processed} total`);
+        Logger.log(`${label}: ${stage} ${processed} — done`);
       }
       done();
     },

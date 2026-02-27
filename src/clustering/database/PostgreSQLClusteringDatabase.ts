@@ -7,6 +7,7 @@ import {
   MapObject,
   MapObjectType,
   RunObject,
+  SkiAreaAssignment,
   SkiAreaAssignmentSource,
   SkiAreaObject,
 } from "../MapObject";
@@ -284,15 +285,15 @@ export class PostgreSQLClusteringDatabase implements ClusteringDatabase {
     const query = `SELECT key, ski_areas FROM objects
        WHERE ski_areas @> $1::jsonb`;
     const affectedObjects = await this.executeQuery<
-      Array<{ key: string; ski_areas: string[] }>
-    >(query, [`["${skiAreaId}"]`]);
+      Array<{ key: string; ski_areas: SkiAreaAssignment[] }>
+    >(query, [JSON.stringify([{ skiAreaId }])]);
 
     await this.executeTransaction(async (client) => {
       for (const obj of affectedObjects) {
         try {
           const currentSkiAreas = obj.ski_areas || [];
           const updatedSkiAreas = currentSkiAreas.filter(
-            (id: string) => id !== skiAreaId,
+            (item: SkiAreaAssignment) => item.skiAreaId !== skiAreaId,
           );
           await client.query(
             "UPDATE objects SET ski_areas = $1 WHERE key = $2",
@@ -469,7 +470,7 @@ export class PostgreSQLClusteringDatabase implements ClusteringDatabase {
     }
 
     query += ` AND NOT (ski_areas @> $${paramIndex++}::jsonb)`;
-    params.push(JSON.stringify([context.id]));
+    params.push(JSON.stringify([{ skiAreaId: context.id }]));
 
     if (context.excludeObjectsAlreadyInSkiArea) {
       query += " AND (ski_areas = '[]'::jsonb OR ski_areas IS NULL)";
@@ -504,7 +505,7 @@ export class PostgreSQLClusteringDatabase implements ClusteringDatabase {
     const query = `SELECT * FROM objects
        WHERE ski_areas @> $1::jsonb AND type != 'SKI_AREA'`;
     const rows = await this.executeQuery<ObjectRow[]>(query, [
-      JSON.stringify([skiAreaId]),
+      JSON.stringify([{ skiAreaId }]),
     ]);
 
     return rows.map((row) => rowToMapObject(row));
@@ -598,7 +599,7 @@ export class PostgreSQLClusteringDatabase implements ClusteringDatabase {
     try {
       const rows = await this.executeQuery<
         Array<{ geometry: GeoJSON.Geometry }>
-      >(SQL.DERIVED_GEOMETRY, [JSON.stringify([skiAreaId]), skiAreaId]);
+      >(SQL.DERIVED_GEOMETRY, [JSON.stringify([{ skiAreaId }]), skiAreaId]);
 
       if (rows.length === 0 || !rows[0].geometry) {
         throw new Error(`No geometry found for ski area ${skiAreaId}`);

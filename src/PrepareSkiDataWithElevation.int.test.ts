@@ -2,7 +2,7 @@ import nock from "nock";
 import { RunFeature } from "openskidata-format";
 import { Config, getPostgresTestConfig } from "./Config";
 import { PostGISDataStore } from "./io/PostGISDataStore";
-import prepare from "./PrepareGeoJSON";
+import prepare from "./PrepareSkiData";
 import * as TestHelpers from "./TestHelpers";
 
 jest.setTimeout(60 * 1000);
@@ -43,10 +43,12 @@ beforeEach(() => {
     tiles: null,
     tiles3D: null,
     postgresCache: getPostgresTestConfig(),
-    output: { toFiles: true, toPostgis: false },
+    output: { toFiles: true },
     conflateElevation: true,
     exportOnly: false,
     startAtAssociatingHighways: false,
+    continueWithDEM: false,
+    continueProcessingPeaks: false,
     localOSMDatabase: null,
   };
 });
@@ -56,7 +58,7 @@ afterEach(() => {
 });
 
 it("adds elevations to lift geometry", async () => {
-  const paths = TestHelpers.getFilePaths();
+  const paths = TestHelpers.getOutputPaths();
   const dataStore = new PostGISDataStore(testConfig.postgresCache);
   try {
     mockElevationServer(200);
@@ -93,7 +95,8 @@ it("adds elevations to lift geometry", async () => {
 
     await prepare(paths, testConfig);
 
-    expect(TestHelpers.fileContents(paths.output.lifts)).toMatchInlineSnapshot(`
+    const lifts = await TestHelpers.outputContents(dataStore, "lifts");
+    expect(lifts).toMatchInlineSnapshot(`
 {
   "features": [
     {
@@ -106,12 +109,13 @@ it("adds elevations to lift geometry", async () => {
           ],
           [
             11.1164297,
-            47.55815630000001,
+            47.5581563,
             1,
           ],
         ],
         "type": "LineString",
       },
+      "id": "e8e4058e82dd25aa12b4673471dd754a8b319f5c",
       "properties": {
         "bubble": null,
         "capacity": null,
@@ -151,7 +155,7 @@ it("adds elevations to lift geometry", async () => {
 });
 
 it("adds elevations to run geometry & elevation profile", async () => {
-  const paths = TestHelpers.getFilePaths();
+  const paths = TestHelpers.getOutputPaths();
   const dataStore = new PostGISDataStore(testConfig.postgresCache);
   try {
     mockElevationServer(200);
@@ -192,8 +196,8 @@ it("adds elevations to run geometry & elevation profile", async () => {
 
     await prepare(paths, testConfig);
 
-    const feature: RunFeature = TestHelpers.fileContents(paths.output.runs)
-      .features[0];
+    const runs = await TestHelpers.outputContents(dataStore, "runs");
+    const feature: RunFeature = runs.features[0] as RunFeature;
 
     expect(feature.properties.elevationProfile).toMatchInlineSnapshot(`
 {
@@ -220,11 +224,11 @@ it("adds elevations to run geometry & elevation profile", async () => {
   "coordinates": [
     [
       11.1164229,
-      47.558125000000004,
+      47.558125,
       0,
     ],
     [
-      11.116365499999999,
+      11.1163655,
       47.5579742,
       1,
     ],
@@ -243,7 +247,7 @@ it("adds elevations to run geometry & elevation profile", async () => {
 });
 
 it("completes without adding elevations when elevation server fails", async () => {
-  const paths = TestHelpers.getFilePaths();
+  const paths = TestHelpers.getOutputPaths();
   const dataStore = new PostGISDataStore(testConfig.postgresCache);
   try {
     mockElevationServer(500);
@@ -280,7 +284,8 @@ it("completes without adding elevations when elevation server fails", async () =
 
     await prepare(paths, testConfig);
 
-    expect(TestHelpers.fileContents(paths.output.lifts)).toMatchInlineSnapshot(`
+    const lifts = await TestHelpers.outputContents(dataStore, "lifts");
+    expect(lifts).toMatchInlineSnapshot(`
 {
   "features": [
     {
@@ -289,14 +294,17 @@ it("completes without adding elevations when elevation server fails", async () =
           [
             11.1223444,
             47.5572422,
+            0,
           ],
           [
             11.1164297,
-            47.55815630000001,
+            47.5581563,
+            0,
           ],
         ],
         "type": "LineString",
       },
+      "id": "e8e4058e82dd25aa12b4673471dd754a8b319f5c",
       "properties": {
         "bubble": null,
         "capacity": null,
@@ -336,7 +344,7 @@ it("completes without adding elevations when elevation server fails", async () =
 });
 
 it("adds elevations to run polygons", async () => {
-  const paths = TestHelpers.getFilePaths();
+  const paths = TestHelpers.getOutputPaths();
   const dataStore = new PostGISDataStore(testConfig.postgresCache);
   try {
     mockElevationServer(200);
@@ -381,19 +389,19 @@ it("adds elevations to run polygons", async () => {
 
     await prepare(paths, testConfig);
 
-    expect(TestHelpers.fileContents(paths.output.runs).features[0].geometry)
-      .toMatchInlineSnapshot(`
+    const runs = await TestHelpers.outputContents(dataStore, "runs");
+    expect(runs.features[0].geometry).toMatchInlineSnapshot(`
 {
   "coordinates": [
     [
       [
-        6.544500899999999,
+        6.5445009,
         45.3230511,
         0,
       ],
       [
-        6.543409400000001,
-        45.323173700000005,
+        6.5434094,
+        45.3231737,
         1,
       ],
       [
@@ -407,7 +415,7 @@ it("adds elevations to run polygons", async () => {
         3,
       ],
       [
-        6.544500899999999,
+        6.5445009,
         45.3230511,
         4,
       ],

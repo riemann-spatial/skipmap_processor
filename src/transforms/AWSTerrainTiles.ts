@@ -6,7 +6,7 @@ const DEFAULT_AWS_TERRAIN_ZOOM = 15;
 const NODATA_VALUE = -32768;
 const MIN_VALID_ELEVATION = -500;
 const MAX_VALID_ELEVATION = 9000;
-const MAX_TILE_CACHE_SIZE = 50000;
+const MAX_TILE_CACHE_SIZE = 1000; // was: 5000
 
 type Result<T, E = Error> = { ok: true; value: T } | { ok: false; error: E };
 

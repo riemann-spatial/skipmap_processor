@@ -3,7 +3,6 @@ import centroid from "@turf/centroid";
 import * as turf from "@turf/helpers";
 import length from "@turf/length";
 import nearestPoint from "@turf/nearest-point";
-import { createWriteStream } from "fs";
 import * as GeoJSON from "geojson";
 import {
   FeatureType,
@@ -21,9 +20,11 @@ import {
   HighwayProperties,
   SkiAreaReference,
 } from "../features/HighwayFeature";
-import { readGeoJSONFeaturesAsync } from "../io/GeoJSONReader";
+import { PostGISDataStore } from "../io/PostGISDataStore";
+import { toOutputTable } from "../transforms/ProcessingTableWriter";
 import { getPoints, getPositions } from "../transforms/GeoTransforms";
 import { Logger } from "../utils/Logger";
+import { asyncGeneratorToStream } from "../utils/StreamUtils";
 import { ClusteringDatabase } from "./database/ClusteringDatabase";
 import { performanceMonitor } from "./database/PerformanceMonitor";
 import { MapObject } from "./MapObject";
@@ -34,6 +35,8 @@ import {
   SkiAreaAugmentation,
   SkiAreaMerging,
 } from "./services";
+import streamToPromise from "stream-to-promise";
+import { mapAsync } from "../transforms/StreamTransforms";
 
 export const allSkiAreaActivities = new Set([
   SkiAreaActivity.Downhill,
@@ -56,12 +59,7 @@ export class SkiAreaClusteringService {
   }
 
   async clusterSkiAreas(
-    skiAreasPath: string,
-    liftsPath: string,
-    runsPath: string,
-    outputSkiAreasPath: string,
-    outputLiftsPath: string,
-    outputRunsPath: string,
+    dataStore: PostGISDataStore,
     geocoderConfig: GeocodingServerConfig | null,
     snowCoverConfig: SnowCoverConfig | null,
     postgresConfig: PostgresConfig,
@@ -69,12 +67,7 @@ export class SkiAreaClusteringService {
     await performanceMonitor.withOperation(
       "Loading graph into database",
       async () => {
-        await this.dataLoader.loadGraphData(
-          skiAreasPath,
-          liftsPath,
-          runsPath,
-          snowCoverConfig,
-        );
+        await this.dataLoader.loadGraphData(dataStore, snowCoverConfig);
       },
     );
 
@@ -84,10 +77,12 @@ export class SkiAreaClusteringService {
       postgresConfig,
     );
 
+    // Reset output tables before writing clustered results
+    await dataStore.resetOutputTables();
+
     await performanceMonitor.withOperation("Augmenting Runs", async () => {
-      await this.augmentation.augmentGeoJSONFeatures(
-        runsPath,
-        outputRunsPath,
+      await this.augmentation.augmentFeatures(
+        dataStore,
         FeatureType.Run,
         snowCoverConfig,
         postgresConfig,
@@ -95,9 +90,8 @@ export class SkiAreaClusteringService {
     });
 
     await performanceMonitor.withOperation("Augmenting Lifts", async () => {
-      await this.augmentation.augmentGeoJSONFeatures(
-        liftsPath,
-        outputLiftsPath,
+      await this.augmentation.augmentFeatures(
+        dataStore,
         FeatureType.Lift,
         null,
         postgresConfig,
@@ -105,7 +99,7 @@ export class SkiAreaClusteringService {
     });
 
     await performanceMonitor.withOperation("Exporting Ski Areas", async () => {
-      await this.augmentation.exportSkiAreasGeoJSON(outputSkiAreasPath);
+      await this.augmentation.exportSkiAreas(dataStore);
     });
   }
 
@@ -252,23 +246,19 @@ export class SkiAreaClusteringService {
    * spatial join (ST_Intersects) against ski area polygons.
    */
   async associateHighwaysWithSkiAreas(
-    highwaysInputPath: string,
-    highwaysOutputPath: string,
-    skiAreasOutputPath: string,
+    dataStore: PostGISDataStore,
     bufferMeters: number,
   ): Promise<void> {
     await performanceMonitor.withOperation(
       "Associating highways with ski areas",
       async () => {
-        // Read highways into flat array
+        // Read highways from processing tables into flat array
         const highways: Array<{
           id: string;
           featureJson: string;
           geometryJson: string;
         }> = [];
-        for await (const feature of readGeoJSONFeaturesAsync(
-          highwaysInputPath,
-        )) {
+        for await (const feature of dataStore.streamProcessingHighways()) {
           const props = feature.properties as HighwayProperties;
           highways.push({
             id: props.id,
@@ -276,23 +266,20 @@ export class SkiAreaClusteringService {
             geometryJson: JSON.stringify(feature.geometry),
           });
         }
-        Logger.log(`Read ${highways.length} highways from input`);
+        Logger.log(`Read ${highways.length} highways from processing table`);
 
         if (highways.length === 0) {
           Logger.log("No highways to process");
-          await writeEmptyFeatureCollection(highwaysOutputPath);
           return;
         }
 
-        // Read ski area polygons
+        // Read ski area polygons from output tables
         const skiAreaPolygons: Array<{
           id: string;
           name: string | null;
           geometryJson: string;
         }> = [];
-        for await (const feature of readGeoJSONFeaturesAsync(
-          skiAreasOutputPath,
-        )) {
+        for await (const feature of dataStore.streamOutputSkiAreas()) {
           const skiArea = feature as SkiAreaFeature;
           if (
             skiArea.geometry.type === "Polygon" ||
@@ -318,10 +305,8 @@ export class SkiAreaClusteringService {
               bufferMeters,
             );
 
-          // Stream results from PostGIS spatial join and write output
-          const outputStream = createWriteStream(highwaysOutputPath);
-          outputStream.write('{"type":"FeatureCollection","features":[\n');
-          let first = true;
+          // Stream results from PostGIS spatial join and write to output table
+          const outputFeatures: GeoJSON.Feature[] = [];
           let writtenCount = 0;
 
           for await (const result of this.database.streamHighwaySkiAreaAssociations()) {
@@ -339,19 +324,38 @@ export class SkiAreaClusteringService {
               },
             };
 
-            if (!first) {
-              outputStream.write(",\n");
-            }
-            outputStream.write(JSON.stringify(outputFeature));
-            first = false;
+            outputFeatures.push(outputFeature as GeoJSON.Feature);
             writtenCount++;
+
+            // Batch write to output table
+            if (outputFeatures.length >= 500) {
+              await dataStore.saveOutputHighways(
+                outputFeatures.map((f) => ({
+                  feature_id:
+                    (f.properties as HighwayProperties).id ||
+                    String(f.id) ||
+                    `unknown-${Date.now()}`,
+                  geometry: f.geometry,
+                  properties: f.properties as Record<string, unknown>,
+                })),
+              );
+              outputFeatures.length = 0;
+            }
           }
 
-          outputStream.write("\n]}");
-          await new Promise<void>((resolve, reject) => {
-            outputStream.end(() => resolve());
-            outputStream.on("error", reject);
-          });
+          // Write remaining features
+          if (outputFeatures.length > 0) {
+            await dataStore.saveOutputHighways(
+              outputFeatures.map((f) => ({
+                feature_id:
+                  (f.properties as HighwayProperties).id ||
+                  String(f.id) ||
+                  `unknown-${Date.now()}`,
+                geometry: f.geometry,
+                properties: f.properties as Record<string, unknown>,
+              })),
+            );
+          }
 
           Logger.log(
             `Finished associating highways with ski areas: kept ${keptCount}, removed ${droppedCount} orphaned, wrote ${writtenCount}`,
@@ -363,13 +367,3 @@ export class SkiAreaClusteringService {
     );
   }
 }
-
-async function writeEmptyFeatureCollection(path: string): Promise<void> {
-  const stream = createWriteStream(path);
-  stream.write('{"type":"FeatureCollection","features":[]}');
-  await new Promise<void>((resolve, reject) => {
-    stream.end(() => resolve());
-    stream.on("error", reject);
-  });
-}
-

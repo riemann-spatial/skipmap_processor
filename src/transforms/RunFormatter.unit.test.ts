@@ -294,6 +294,37 @@ describe("RunFormatter", () => {
     ).toEqual([]);
   });
 
+  it("passes through Polygon geometry for area runs", () => {
+    const polygonFeature: InputRunFeature = {
+      type: "Feature",
+      geometry: {
+        type: "Polygon",
+        coordinates: [
+          [
+            [0, 0],
+            [1, 0],
+            [1, 1],
+            [0, 1],
+            [0, 0],
+          ],
+        ],
+      },
+      properties: {
+        type: "way",
+        id: 1,
+        tags: {
+          "piste:type": "downhill",
+          area: "yes",
+        },
+      },
+    };
+
+    const runs = formatRun(polygonFeature);
+    expect(runs).toHaveLength(1);
+    expect(runs[0]!.geometry.type).toBe("Polygon");
+    expect(runs[0]!.geometry).toEqual(polygonFeature.geometry);
+  });
+
   it("splits MultiPolygon runs into separate Polygon features", () => {
     const multiPolygonFeature: InputRunFeature = {
       type: "Feature",

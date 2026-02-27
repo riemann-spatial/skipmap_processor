@@ -50,7 +50,7 @@ export async function fetchRunsFromLocalDB(
     Logger.log(`Fetched ${wayBatch.length} run ways from local DB.`);
 
     // Query run relations
-    const relationRows = await queryRunRelations(localPool);
+    const relationRows = await queryRunRelations(localPool, bbox);
     const relationBatch: InputFeature[] = [];
     for (const row of relationRows) {
       const key = `relation/${row.osmId}`;
@@ -95,7 +95,14 @@ async function queryRunWays(
   const bboxFilter = buildBBoxFilter(bbox, "w.geom", 1);
   const result = await localPool.query(
     `SELECT w.way_id AS osm_id,
-            ST_AsGeoJSON(ST_Transform(w.geom, 4326))::json AS geometry,
+            ST_AsGeoJSON(ST_Transform(
+              CASE
+                WHEN w.tags -> 'area' = 'yes' OR w.tags -> 'piste:type' = 'downhill'
+                  THEN COALESCE(ST_BuildArea(w.geom), w.geom)
+                ELSE w.geom
+              END,
+              4326
+            ))::json AS geometry,
             hstore_to_json(w.tags) AS tags
      FROM public.ways w
      WHERE w.tags ? 'piste:type'
@@ -110,7 +117,11 @@ async function queryRunWays(
   }));
 }
 
-async function queryRunRelations(localPool: Pool): Promise<RunRow[]> {
+async function queryRunRelations(
+  localPool: Pool,
+  bbox: GeoJSON.BBox | null,
+): Promise<RunRow[]> {
+  const bboxFilter = buildBBoxFilter(bbox, "w.geom", 1);
   const result = await localPool.query(
     `SELECT r.relation_id AS osm_id,
             hstore_to_json(r.tags) AS tags,
@@ -126,8 +137,10 @@ async function queryRunRelations(localPool: Pool): Promise<RunRow[]> {
      CROSS JOIN LATERAL jsonb_array_elements(r.members) AS m
      JOIN public.ways w ON w.way_id = (m->>'ref')::bigint AND m->>'type' = 'way'
      WHERE r.tags ? 'piste:type'
+       AND ${bboxFilter.clause}
      GROUP BY r.relation_id, r.tags
      HAVING ST_Union(w.geom) IS NOT NULL`,
+    bboxFilter.params,
   );
 
   return result.rows.map((row) => ({

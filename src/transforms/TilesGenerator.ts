@@ -1,12 +1,12 @@
 import * as path from "path";
 import { performanceMonitor } from "../clustering/database/PerformanceMonitor";
 import { TilesConfig } from "../Config";
-import { CommonGeoJSONPaths } from "../io/GeoJSONFiles";
+import { CommonOutputPaths } from "../io/OutputPaths";
 import { Logger } from "../utils/Logger";
 import { runCommand } from "../utils/ProcessRunner";
 
 export async function generateTiles(
-  geoJSONPaths: CommonGeoJSONPaths,
+  geoJSONPaths: CommonOutputPaths,
   workingDir: string,
   tilesConfig: TilesConfig,
 ): Promise<void> {

@@ -16,6 +16,11 @@ START_AT_ASSOCIATING_HIGHWAYS=${START_AT_ASSOCIATING_HIGHWAYS:-false}
 if [ "$START_AT_ASSOCIATING_HIGHWAYS" = "1" ]; then
     START_AT_ASSOCIATING_HIGHWAYS=true
 fi
+# Allow CONTINUE_WITH_DEM to be set via environment variable
+CONTINUE_WITH_DEM=${CONTINUE_WITH_DEM:-false}
+if [ "$CONTINUE_WITH_DEM" = "1" ]; then
+    CONTINUE_WITH_DEM=true
+fi
 
 # Parse command line options
 while [[ "$#" -gt 0 ]]; do
@@ -25,6 +30,9 @@ while [[ "$#" -gt 0 ]]; do
             ;;
         --export-only)
             EXPORT_ONLY=true
+            ;;
+        --continue-with-dem)
+            CONTINUE_WITH_DEM=true
             ;;
         *)
             echo "Unknown option: $1"
@@ -45,21 +53,25 @@ fi
 if [ "$EXPORT_ONLY" = true ]; then
     echo "Export-only mode: skipping database init and download"
     echo "Preparing OpenSkiData (export only)..."
-    EXPORT_ONLY=1 npm run prepare-geojson
+    EXPORT_ONLY=1 npm run prepare-ski-data
 elif [ "$START_AT_ASSOCIATING_HIGHWAYS" = true ]; then
     echo "Resuming from highway association: skipping database init and download"
     echo "Preparing OpenSkiData (highway association only)..."
-    START_AT_ASSOCIATING_HIGHWAYS=1 npm run prepare-geojson
+    START_AT_ASSOCIATING_HIGHWAYS=1 npm run prepare-ski-data
+elif [ "$CONTINUE_WITH_DEM" = true ]; then
+    echo "Resuming from DEM elevation: skipping database init and download"
+    echo "Preparing OpenSkiData (continue with DEM)..."
+    CONTINUE_WITH_DEM=1 npm run prepare-ski-data
 else
-    # Initialize database (creates/recreates processing database with schema)
-    echo "Initializing database..."
-    npm run init-database
-
     if [ "$DOWNLOAD" = true ]; then
+        # Initialize database (creates/recreates processing database with schema)
+        echo "Initializing database..."
+        npm run init-database
+
         echo "Downloading..."
         npm run download
     fi
 
     echo "Preparing OpenSkiData..."
-    npm run prepare-geojson
+    npm run prepare-ski-data
 fi

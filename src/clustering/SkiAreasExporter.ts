@@ -1,16 +1,16 @@
-import { createWriteStream } from "fs";
 import { SkiAreaFeature } from "openskidata-format";
 import { Readable } from "stream";
 import streamToPromise from "stream-to-promise";
-import toFeatureCollection from "../transforms/FeatureCollection";
+import { PostGISDataStore } from "../io/PostGISDataStore";
+import { toOutputTable } from "../transforms/ProcessingTableWriter";
 import { map } from "../transforms/StreamTransforms";
 import { Logger } from "../utils/Logger";
 import { SkiAreaObject } from "./MapObject";
 import objectToFeature from "./ObjectToFeature";
 import { ClusteringDatabase } from "./database/ClusteringDatabase";
 
-export default async function exportSkiAreasGeoJSON(
-  path: string,
+export default async function exportSkiAreas(
+  dataStore: PostGISDataStore,
   database: ClusteringDatabase,
 ) {
   const skiAreasIterable = await database.streamSkiAreas();
@@ -18,8 +18,7 @@ export default async function exportSkiAreasGeoJSON(
   await streamToPromise(
     asyncIterableToStream(skiAreasIterable)
       .pipe(map<SkiAreaObject, SkiAreaFeature>(objectToFeature))
-      .pipe(toFeatureCollection())
-      .pipe(createWriteStream(path)),
+      .pipe(toOutputTable(dataStore, "ski_areas")),
   );
 }
 
@@ -34,10 +33,10 @@ function asyncIterableToStream(
       const readable = this;
       iterator
         .next()
-        .catch((_: any) => {
+        .catch((_: unknown) => {
           Logger.log("Failed reading from database, stopping.");
           readable.push(null);
-          return undefined as any;
+          return undefined as IteratorResult<SkiAreaObject> | undefined;
         })
         .then((result: IteratorResult<SkiAreaObject> | undefined) => {
           if (result) {

@@ -1,10 +1,10 @@
 import { configFromEnvironment } from "../Config";
-import downloadAndConvertToGeoJSON from "../io/GeoJSONDownloader";
+import downloadAndStoreSkiData from "../io/SkiDataDownloader";
 import { Logger } from "../utils/Logger";
 
 const config = configFromEnvironment();
 
-downloadAndConvertToGeoJSON(config.workingDir, config.bbox).catch(
+downloadAndStoreSkiData(config.workingDir, config.bbox).catch(
   (reason: any) => {
     Logger.log("Failed downloading", reason);
     process.exit(1);
