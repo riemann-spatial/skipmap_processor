@@ -84,6 +84,12 @@ function deduplicateBatch(features: OutputFeature[]): OutputFeature[] {
   return seen.size === features.length ? features : Array.from(seen.values());
 }
 
+export interface ProcessingFeature {
+  feature_id: string;
+  geometry: GeoJSON.Geometry;
+  properties: Record<string, unknown>;
+}
+
 export class PostGISDataStore {
   private pool: Pool;
   private config: PostgresConfig;
@@ -160,6 +166,153 @@ export class PostGISDataStore {
     } finally {
       client.release();
     }
+  }
+
+  async resetProcessingTables(): Promise<void> {
+    const client = await this.pool.connect();
+    try {
+      Logger.log("Resetting processing tables in openskidata database...");
+      for (const table of [
+        "processing.ski_areas",
+        "processing.runs",
+        "processing.lifts",
+        "processing.highways",
+        "processing.peaks",
+      ]) {
+        await client.query(`
+          DO $$ BEGIN
+            IF EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'processing' AND table_name = '${table.split(".")[1]}') THEN
+              TRUNCATE TABLE ${table} RESTART IDENTITY CASCADE;
+            END IF;
+          END $$;
+        `);
+      }
+      Logger.log("Processing tables reset complete.");
+    } finally {
+      client.release();
+    }
+  }
+
+  async saveProcessingSkiAreas(features: ProcessingFeature[]): Promise<void> {
+    await this.batchInsertProcessingFeatures("processing.ski_areas", features);
+  }
+
+  async saveProcessingRuns(features: ProcessingFeature[]): Promise<void> {
+    await this.batchInsertProcessingFeatures("processing.runs", features);
+  }
+
+  async saveProcessingLifts(features: ProcessingFeature[]): Promise<void> {
+    await this.batchInsertProcessingFeatures("processing.lifts", features);
+  }
+
+  async saveProcessingHighways(features: ProcessingFeature[]): Promise<void> {
+    await this.batchInsertProcessingFeatures("processing.highways", features);
+  }
+
+  async saveProcessingPeaks(features: ProcessingFeature[]): Promise<void> {
+    await this.batchInsertProcessingFeatures("processing.peaks", features);
+  }
+
+  async *streamProcessingSkiAreas(): AsyncGenerator<GeoJSON.Feature> {
+    yield* this.streamProcessingFeatures("processing.ski_areas");
+  }
+
+  async *streamProcessingRuns(): AsyncGenerator<GeoJSON.Feature> {
+    yield* this.streamProcessingFeatures("processing.runs");
+  }
+
+  async *streamProcessingLifts(): AsyncGenerator<GeoJSON.Feature> {
+    yield* this.streamProcessingFeatures("processing.lifts");
+  }
+
+  async *streamProcessingHighways(): AsyncGenerator<GeoJSON.Feature> {
+    yield* this.streamProcessingFeatures("processing.highways");
+  }
+
+  async *streamProcessingPeaks(): AsyncGenerator<GeoJSON.Feature> {
+    yield* this.streamProcessingFeatures("processing.peaks");
+  }
+
+  async getProcessingSkiAreasCount(): Promise<number> {
+    return this.getCount("processing.ski_areas");
+  }
+
+  async getProcessingRunsCount(): Promise<number> {
+    return this.getCount("processing.runs");
+  }
+
+  async getProcessingLiftsCount(): Promise<number> {
+    return this.getCount("processing.lifts");
+  }
+
+  async getProcessingHighwaysCount(): Promise<number> {
+    return this.getCount("processing.highways");
+  }
+
+  async getProcessingPeaksCount(): Promise<number> {
+    return this.getCount("processing.peaks");
+  }
+
+  async getOutputSkiAreasCount(): Promise<number> {
+    return this.getCount("output.ski_areas");
+  }
+
+  async getOutputRunsCount(): Promise<number> {
+    return this.getCount("output.runs");
+  }
+
+  async getOutputLiftsCount(): Promise<number> {
+    return this.getCount("output.lifts");
+  }
+
+  async getOutputHighwaysCount(): Promise<number> {
+    return this.getCount("output.highways");
+  }
+
+  async getOutputPeaksCount(): Promise<number> {
+    return this.getCount("output.peaks");
+  }
+
+  async copyPeaksFromProcessingToOutput(): Promise<void> {
+    const client = await this.pool.connect();
+    try {
+      await client.query(`TRUNCATE TABLE output.peaks RESTART IDENTITY CASCADE`);
+      await client.query(`
+        INSERT INTO output.peaks (feature_id, geometry, type, name, elevation, elevation_source, prominence, natural_type, websites, wikidata_id, wikipedia_id, sources, properties)
+        SELECT
+          feature_id,
+          ST_Force3D(geometry),
+          properties->>'type',
+          properties->>'name',
+          (properties->>'elevation')::REAL,
+          properties->>'elevationSource',
+          (properties->>'prominence')::REAL,
+          properties->>'naturalType',
+          CASE
+            WHEN properties->'websites' IS NOT NULL AND jsonb_typeof(properties->'websites') = 'array'
+            THEN ARRAY(SELECT jsonb_array_elements_text(properties->'websites'))
+            ELSE NULL
+          END,
+          properties->>'wikidataID',
+          properties->>'wikipediaID',
+          properties->'sources',
+          properties
+        FROM processing.peaks
+      `);
+      Logger.log("Copied peaks from processing to output tables");
+    } finally {
+      client.release();
+    }
+  }
+
+  async updateOutputSkiAreaGeometry(
+    featureId: string,
+    geometry: GeoJSON.Geometry,
+  ): Promise<void> {
+    await this.pool.query(
+      `UPDATE output.ski_areas SET geometry = ST_Force3D(ST_GeomFromGeoJSON($2)) WHERE feature_id = $1`,
+      [featureId, JSON.stringify(geometry)],
+    );
   }
 
   async saveInputRuns(features: InputFeature[]): Promise<void> {
@@ -516,6 +669,76 @@ export class PostGISDataStore {
 
   async close(): Promise<void> {
     await this.pool.end();
+  }
+
+  private async batchInsertProcessingFeatures(
+    tableName: string,
+    features: ProcessingFeature[],
+  ): Promise<void> {
+    const client = await this.pool.connect();
+    try {
+      const batchSize = 1000;
+      for (let i = 0; i < features.length; i += batchSize) {
+        const batch = features.slice(i, i + batchSize);
+        const values: unknown[] = [];
+        const placeholders: string[] = [];
+
+        batch.forEach((feature, idx) => {
+          const offset = idx * 3;
+          placeholders.push(
+            `($${offset + 1}, ST_Force3D(ST_GeomFromGeoJSON($${offset + 2})), $${offset + 3})`,
+          );
+          values.push(
+            feature.feature_id,
+            JSON.stringify(feature.geometry),
+            JSON.stringify(feature.properties),
+          );
+        });
+
+        await client.query(
+          `INSERT INTO ${tableName} (feature_id, geometry, properties)
+           VALUES ${placeholders.join(", ")}`,
+          values,
+        );
+      }
+    } finally {
+      client.release();
+    }
+  }
+
+  private async *streamProcessingFeatures(
+    tableName: string,
+  ): AsyncGenerator<GeoJSON.Feature> {
+    const client = await this.pool.connect();
+    try {
+      const batchSize = 1000;
+      let offset = 0;
+      let hasMore = true;
+
+      while (hasMore) {
+        const result = await client.query(
+          `SELECT feature_id, ST_AsGeoJSON(geometry)::jsonb as geometry, properties
+           FROM ${tableName}
+           ORDER BY id
+           LIMIT $1 OFFSET $2`,
+          [batchSize, offset],
+        );
+
+        for (const row of result.rows) {
+          yield {
+            type: "Feature",
+            id: row.feature_id,
+            geometry: row.geometry,
+            properties: row.properties,
+          };
+        }
+
+        hasMore = result.rows.length === batchSize;
+        offset += batchSize;
+      }
+    } finally {
+      client.release();
+    }
   }
 
   private async batchInsertFeatures(

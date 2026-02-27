@@ -1,14 +1,10 @@
 import { Config } from "../Config";
-import {
-  GeoJSONIntermediatePaths,
-  GeoJSONOutputPaths,
-} from "../io/GeoJSONFiles";
+import { PostGISDataStore } from "../io/PostGISDataStore";
 import { PostgreSQLClusteringDatabase } from "./database/PostgreSQLClusteringDatabase";
 import { SkiAreaClusteringService } from "./SkiAreaClusteringService";
 
 export default async function clusterSkiAreas(
-  intermediatePaths: GeoJSONIntermediatePaths,
-  outputPaths: GeoJSONOutputPaths,
+  dataStore: PostGISDataStore,
   config: Config,
   processHighways: boolean = false,
 ): Promise<void> {
@@ -23,12 +19,7 @@ export default async function clusterSkiAreas(
 
     if (!skipToHighways) {
       await clusteringService.clusterSkiAreas(
-        intermediatePaths.skiAreas,
-        intermediatePaths.lifts,
-        intermediatePaths.runs,
-        outputPaths.skiAreas,
-        outputPaths.lifts,
-        outputPaths.runs,
+        dataStore,
         config.geocodingServer,
         config.snowCover,
         config.postgresCache,
@@ -39,9 +30,7 @@ export default async function clusterSkiAreas(
     if (processHighways) {
       const bufferMeters = config.localOSMDatabase?.bufferMeters ?? 1000;
       await clusteringService.associateHighwaysWithSkiAreas(
-        intermediatePaths.highways,
-        outputPaths.highways,
-        outputPaths.skiAreas,
+        dataStore,
         bufferMeters,
       );
     }

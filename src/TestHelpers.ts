@@ -30,27 +30,21 @@ import {
   InputSkiMapOrgSkiAreaFeature,
   OSMSkiAreaSite,
 } from "./features/SkiAreaFeature";
-import {
-  DataPaths,
-  GeoJSONIntermediatePaths,
-  GeoJSONOutputPaths,
-} from "./io/GeoJSONFiles";
+import { OutputPaths } from "./io/OutputPaths";
 import {
   InputFeature,
   InputSkiAreaFeature,
   InputSkiAreaSite,
   PostGISDataStore,
+  ProcessingFeature,
 } from "./io/PostGISDataStore";
 import placeholderSiteGeometry from "./utils/PlaceholderSiteGeometry";
 
-export interface FolderContents extends Map<string, any> {}
+export interface FolderContents extends Map<string, unknown> {}
 
-export function getFilePaths(): DataPaths {
+export function getOutputPaths(): OutputPaths {
   const dir = tmp.dirSync().name;
-  return {
-    intermediate: new GeoJSONIntermediatePaths(path.join(dir, "intermediate")),
-    output: new GeoJSONOutputPaths(path.join(dir, "output")),
-  };
+  return new OutputPaths(path.join(dir, "output"));
 }
 
 /**
@@ -136,53 +130,89 @@ export async function mockInputFiles(
   }
 }
 
-export function mockFeatureFiles(
+function featureToProcessingFeature(
+  feature: GeoJSON.Feature,
+): ProcessingFeature {
+  const props = feature.properties || {};
+  return {
+    feature_id: props.id || String(feature.id) || `unknown-${Date.now()}`,
+    geometry: feature.geometry,
+    properties: props,
+  };
+}
+
+/**
+ * Write features directly to processing tables for clustering tests.
+ */
+export async function mockProcessingFeatures(
   skiAreas: SkiAreaFeature[],
   lifts: LiftFeature[],
   runs: RunFeature[],
-  intermedatePaths: GeoJSONIntermediatePaths,
-) {
-  fs.writeFileSync(
-    intermedatePaths.skiAreas,
-    JSON.stringify({
-      type: "FeatureCollection",
-      features: skiAreas,
-    }),
-  );
-  fs.writeFileSync(
-    intermedatePaths.lifts,
-    JSON.stringify({
-      type: "FeatureCollection",
-      features: lifts,
-    }),
-  );
-  fs.writeFileSync(
-    intermedatePaths.runs,
-    JSON.stringify({
-      type: "FeatureCollection",
-      features: runs,
-    }),
-  );
+  dataStore: PostGISDataStore,
+): Promise<void> {
+  await dataStore.resetProcessingTables();
+
+  if (skiAreas.length > 0) {
+    await dataStore.saveProcessingSkiAreas(
+      skiAreas.map(featureToProcessingFeature),
+    );
+  }
+  if (lifts.length > 0) {
+    await dataStore.saveProcessingLifts(
+      lifts.map(featureToProcessingFeature),
+    );
+  }
+  if (runs.length > 0) {
+    await dataStore.saveProcessingRuns(
+      runs.map(featureToProcessingFeature),
+    );
+  }
 }
 
-export function contents(paths: GeoJSONOutputPaths): FolderContents {
+/**
+ * Read all features from an output table as a FeatureCollection-like object.
+ */
+export async function outputContents(
+  dataStore: PostGISDataStore,
+  type: "ski_areas" | "runs" | "lifts" | "highways" | "peaks",
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+): Promise<{ type: string; features: any[] }> {
+  const features: GeoJSON.Feature[] = [];
+  const stream =
+    type === "ski_areas"
+      ? dataStore.streamOutputSkiAreas()
+      : type === "runs"
+        ? dataStore.streamOutputRuns()
+        : type === "lifts"
+          ? dataStore.streamOutputLifts()
+          : type === "highways"
+            ? dataStore.streamOutputHighways()
+            : dataStore.streamOutputPeaks();
+
+  for await (const feature of stream) {
+    features.push(feature);
+  }
+
+  return { type: "FeatureCollection", features };
+}
+
+export function mapboxGLContents(
+  paths: OutputPaths,
+): FolderContents {
   return [
-    paths.lifts,
     paths.mapboxGL.lifts,
     paths.mapboxGL.runs,
     paths.mapboxGL.skiAreas,
-    paths.runs,
-    paths.skiAreas,
   ]
-    .filter((path) => fs.existsSync(path))
+    .filter((p) => fs.existsSync(p))
     .reduce((contents: FolderContents, filePath: string) => {
       contents.set("output/" + path.basename(filePath), fileContents(filePath));
       return contents;
     }, new Map());
 }
 
-export function fileContents(path: string): any {
-  return JSON.parse(fs.readFileSync(path).toString());
+export function fileContents(filePath: string): unknown {
+  return JSON.parse(fs.readFileSync(filePath).toString());
 }
 
 export function mockRunFeature<G extends InputRunGeometry>(options: {

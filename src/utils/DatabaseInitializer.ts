@@ -87,6 +87,7 @@ export class DatabaseInitializer {
       try {
         await this.createSchemas(client);
         await this.createInputTables(client);
+        await this.createProcessingTables(client);
         await this.createOutputTables(client);
         await this.createClusteringTable(client);
         Logger.log(
@@ -104,8 +105,10 @@ export class DatabaseInitializer {
     const user = this.config.user;
     await client.query(`
       CREATE SCHEMA IF NOT EXISTS input AUTHORIZATION "${user}";
+      CREATE SCHEMA IF NOT EXISTS processing AUTHORIZATION "${user}";
       CREATE SCHEMA IF NOT EXISTS output AUTHORIZATION "${user}";
       GRANT ALL ON SCHEMA input TO "${user}";
+      GRANT ALL ON SCHEMA processing TO "${user}";
       GRANT ALL ON SCHEMA output TO "${user}";
       GRANT ALL ON SCHEMA public TO "${user}";
     `);
@@ -184,6 +187,60 @@ export class DatabaseInitializer {
       );
       CREATE INDEX peaks_input_geometry_idx ON input.peaks USING GIST (geometry);
       CREATE INDEX peaks_input_osm_id_idx ON input.peaks (osm_id);
+    `);
+  }
+
+  private async createProcessingTables(client: PoolClient): Promise<void> {
+    await client.query(`
+      -- processing.ski_areas: Formatted ski area features (intermediate between input and output)
+      CREATE TABLE processing.ski_areas (
+        id SERIAL PRIMARY KEY,
+        feature_id TEXT NOT NULL,
+        geometry GEOMETRY(GeometryZ, 4326),
+        properties JSONB NOT NULL
+      );
+      CREATE INDEX processing_ski_areas_feature_id_idx ON processing.ski_areas (feature_id);
+      CREATE INDEX processing_ski_areas_geometry_idx ON processing.ski_areas USING GIST (geometry);
+
+      -- processing.runs: Formatted run features
+      CREATE TABLE processing.runs (
+        id SERIAL PRIMARY KEY,
+        feature_id TEXT NOT NULL,
+        geometry GEOMETRY(GeometryZ, 4326),
+        properties JSONB NOT NULL
+      );
+      CREATE INDEX processing_runs_feature_id_idx ON processing.runs (feature_id);
+      CREATE INDEX processing_runs_geometry_idx ON processing.runs USING GIST (geometry);
+
+      -- processing.lifts: Formatted lift features
+      CREATE TABLE processing.lifts (
+        id SERIAL PRIMARY KEY,
+        feature_id TEXT NOT NULL,
+        geometry GEOMETRY(GeometryZ, 4326),
+        properties JSONB NOT NULL
+      );
+      CREATE INDEX processing_lifts_feature_id_idx ON processing.lifts (feature_id);
+      CREATE INDEX processing_lifts_geometry_idx ON processing.lifts USING GIST (geometry);
+
+      -- processing.highways: Formatted highway features
+      CREATE TABLE processing.highways (
+        id SERIAL PRIMARY KEY,
+        feature_id TEXT NOT NULL,
+        geometry GEOMETRY(GeometryZ, 4326),
+        properties JSONB NOT NULL
+      );
+      CREATE INDEX processing_highways_feature_id_idx ON processing.highways (feature_id);
+      CREATE INDEX processing_highways_geometry_idx ON processing.highways USING GIST (geometry);
+
+      -- processing.peaks: Formatted peak features
+      CREATE TABLE processing.peaks (
+        id SERIAL PRIMARY KEY,
+        feature_id TEXT NOT NULL,
+        geometry GEOMETRY(GeometryZ, 4326),
+        properties JSONB NOT NULL
+      );
+      CREATE INDEX processing_peaks_feature_id_idx ON processing.peaks (feature_id);
+      CREATE INDEX processing_peaks_geometry_idx ON processing.peaks USING GIST (geometry);
     `);
   }
 

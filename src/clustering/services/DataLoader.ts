@@ -1,9 +1,10 @@
 import { LiftFeature, RunFeature, SkiAreaFeature } from "openskidata-format";
 import StreamToPromise from "stream-to-promise";
 import { SnowCoverConfig } from "../../Config";
-import { readGeoJSONFeatures } from "../../io/GeoJSONReader";
+import { PostGISDataStore } from "../../io/PostGISDataStore";
 import { mapAsync } from "../../transforms/StreamTransforms";
 import { Logger } from "../../utils/Logger";
+import { asyncGeneratorToStream } from "../../utils/StreamUtils";
 import { VIIRSPixelExtractor } from "../../utils/VIIRSPixelExtractor";
 import { ClusteringDatabase } from "../database/ClusteringDatabase";
 import { performanceMonitor } from "../database/PerformanceMonitor";
@@ -16,9 +17,7 @@ export class DataLoader {
   constructor(private database: ClusteringDatabase) {}
 
   async loadGraphData(
-    skiAreasPath: string,
-    liftsPath: string,
-    runsPath: string,
+    dataStore: PostGISDataStore,
     snowCoverConfig: SnowCoverConfig | null,
   ): Promise<void> {
     const viirsExtractor = new VIIRSPixelExtractor();
@@ -26,14 +25,18 @@ export class DataLoader {
     await performanceMonitor.withOperation("Loading Graph Data", async () => {
       await Promise.all(
         [
-          this.loadFeatures(skiAreasPath, (feature: SkiAreaFeature) =>
-            prepareSkiArea(feature),
+          this.loadFeatures(
+            asyncGeneratorToStream(dataStore.streamProcessingSkiAreas()),
+            (feature: SkiAreaFeature) => prepareSkiArea(feature),
           ),
-          this.loadFeatures(liftsPath, (feature: LiftFeature) =>
-            prepareLift(feature),
+          this.loadFeatures(
+            asyncGeneratorToStream(dataStore.streamProcessingLifts()),
+            (feature: LiftFeature) => prepareLift(feature),
           ),
-          this.loadFeatures(runsPath, (feature: RunFeature) =>
-            prepareRun(feature, viirsExtractor, snowCoverConfig),
+          this.loadFeatures(
+            asyncGeneratorToStream(dataStore.streamProcessingRuns()),
+            (feature: RunFeature) =>
+              prepareRun(feature, viirsExtractor, snowCoverConfig),
           ),
         ].map<Promise<Buffer>>(StreamToPromise),
       );
@@ -45,10 +48,10 @@ export class DataLoader {
   }
 
   private loadFeatures<T extends FeatureType>(
-    path: string,
+    stream: NodeJS.ReadableStream,
     prepare: (feature: T) => DraftMapObject,
   ): NodeJS.ReadableStream {
-    return readGeoJSONFeatures(path).pipe(
+    return stream.pipe(
       mapAsync(async (feature: unknown) => {
         try {
           const preparedObject = prepare(feature as T) as MapObject;

@@ -1,14 +1,8 @@
 import clusterSkiAreas from "../clustering/ClusterSkiAreas";
 import { configFromEnvironment } from "../Config";
-import {
-  GeoJSONIntermediatePaths,
-  GeoJSONOutputPaths,
-} from "../io/GeoJSONFiles";
+import { getPostGISDataStore } from "../io/PostGISDataStore";
 
 const config = configFromEnvironment();
+const dataStore = getPostGISDataStore(config.postgresCache);
 
-clusterSkiAreas(
-  new GeoJSONIntermediatePaths(config.workingDir),
-  new GeoJSONOutputPaths(config.outputDir),
-  config,
-);
+clusterSkiAreas(dataStore, config);

@@ -73,7 +73,6 @@ export type PostgresConfig = {
 
 export type OutputConfig = {
   toFiles: boolean;
-  toPostgis: boolean;
 };
 
 export type LocalOSMDatabaseConfig = {
@@ -112,6 +111,10 @@ export interface Config {
   exportOnly: boolean;
   // Resume from highway association step (requires previous clustering run)
   startAtAssociatingHighways: boolean;
+  // Resume from DEM elevation step (reuses existing ski areas, preserves elevation cache)
+  continueWithDEM: boolean;
+  // Resume from peaks processing step (skips ski areas, runs, lifts, highways)
+  continueProcessingPeaks: boolean;
   // Local OSM planet database for highway and peak queries (alternative to Overpass)
   localOSMDatabase: LocalOSMDatabaseConfig | null;
 }
@@ -229,12 +232,13 @@ export function configFromEnvironment(): Config {
     postgresCache: getPostgresConfig(),
     output: {
       toFiles: process.env.OUTPUT_TO_FILES !== "0",
-      toPostgis: process.env.OUTPUT_TO_POSTGIS === "1",
     },
     conflateElevation: process.env.CONFLATE_ELEVATION !== "0",
     exportOnly: process.env.EXPORT_ONLY === "1",
     startAtAssociatingHighways:
       process.env.START_AT_ASSOCIATING_HIGHWAYS === "1",
+    continueWithDEM: process.env.CONTINUE_WITH_DEM === "1",
+    continueProcessingPeaks: process.env.CONTINUE_PROCESSING_PEAKS === "1",
     localOSMDatabase:
       process.env.COMPILE_LOCAL === "1"
         ? {

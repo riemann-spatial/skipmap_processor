@@ -32,7 +32,7 @@ import {
   PostGISDataStore,
 } from "./PostGISDataStore";
 
-export default async function downloadAndConvertToGeoJSON(
+export default async function downloadAndStoreSkiData(
   folder: string,
   bbox: GeoJSON.BBox | null,
 ): Promise<void> {
@@ -285,7 +285,7 @@ async function downloadAndStoreSkiAreaSitesFromLocalDB(
   dataStore: PostGISDataStore,
 ): Promise<void> {
   Logger.log("Fetching ski area sites from local OSM planet database...");
-  await fetchSkiAreaSitesFromLocalDB(config.localOSMDatabase!, dataStore);
+  await fetchSkiAreaSitesFromLocalDB(config.localOSMDatabase!, dataStore, config.bbox);
 }
 
 function osmFeatureToInputFeature(feature: GeoJSON.Feature): InputFeature {

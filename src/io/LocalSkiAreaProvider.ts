@@ -55,7 +55,7 @@ export async function fetchSkiAreasFromLocalDB(
     Logger.log(`Fetched ${wayBatch.length} ski area ways from local DB.`);
 
     // Query ski area relations
-    const relationRows = await querySkiAreaRelations(localPool);
+    const relationRows = await querySkiAreaRelations(localPool, bbox);
     const relationBatch: InputSkiAreaFeature[] = [];
     for (const row of relationRows) {
       const key = `relation/${row.osmId}`;
@@ -93,6 +93,7 @@ export async function fetchSkiAreasFromLocalDB(
 export async function fetchSkiAreaSitesFromLocalDB(
   localDbConfig: LocalOSMDatabaseConfig,
   dataStore: PostGISDataStore,
+  bbox: GeoJSON.BBox | null,
 ): Promise<number> {
   const localPool = new Pool({
     host: localDbConfig.host,
@@ -108,12 +109,23 @@ export async function fetchSkiAreaSitesFromLocalDB(
   try {
     Logger.log("Querying ski area sites from local OSM planet database...");
 
+    const bboxFilter = buildBBoxFilter(bbox, "w.geom", 1);
+    const bboxClause =
+      bbox
+        ? `AND EXISTS (
+            SELECT 1 FROM jsonb_array_elements(r.members) AS m2
+            JOIN public.ways w ON w.way_id = (m2->>'ref')::bigint AND m2->>'type' = 'way'
+            WHERE ${bboxFilter.clause}
+          )`
+        : "";
     const result = await localPool.query(
       `SELECT r.relation_id AS osm_id,
               hstore_to_json(r.tags) AS tags,
               r.members
        FROM public.relations r
-       WHERE r.tags -> 'site' = 'piste'`,
+       WHERE r.tags -> 'site' = 'piste'
+         ${bboxClause}`,
+      bboxFilter.params,
     );
 
     const sites: InputSkiAreaSite[] = result.rows.map((row) => ({
@@ -188,7 +200,11 @@ async function querySkiAreaWays(
   }));
 }
 
-async function querySkiAreaRelations(localPool: Pool): Promise<SkiAreaRow[]> {
+async function querySkiAreaRelations(
+  localPool: Pool,
+  bbox: GeoJSON.BBox | null,
+): Promise<SkiAreaRow[]> {
+  const bboxFilter = buildBBoxFilter(bbox, "w.geom", 1);
   const result = await localPool.query(
     `SELECT r.relation_id AS osm_id,
             hstore_to_json(r.tags) AS tags,
@@ -200,8 +216,10 @@ async function querySkiAreaRelations(localPool: Pool): Promise<SkiAreaRow[]> {
      CROSS JOIN LATERAL jsonb_array_elements(r.members) AS m
      JOIN public.ways w ON w.way_id = (m->>'ref')::bigint AND m->>'type' = 'way'
      WHERE ${SKI_AREA_RELATION_LANDUSE_FILTER}
+       AND ${bboxFilter.clause}
      GROUP BY r.relation_id, r.tags
      HAVING ST_Union(w.geom) IS NOT NULL`,
+    bboxFilter.params,
   );
 
   return result.rows.map((row) => ({

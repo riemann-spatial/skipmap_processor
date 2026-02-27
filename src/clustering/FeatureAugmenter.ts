@@ -1,27 +1,33 @@
-import { createWriteStream } from "fs";
 import { FeatureType } from "openskidata-format";
 import streamToPromise from "stream-to-promise";
 import { PostgresConfig, SnowCoverConfig } from "../Config";
-import { readGeoJSONFeatures } from "../io/GeoJSONReader";
-import toFeatureCollection from "../transforms/FeatureCollection";
+import { PostGISDataStore } from "../io/PostGISDataStore";
+import { toOutputTable } from "../transforms/ProcessingTableWriter";
 import { mapAsync } from "../transforms/StreamTransforms";
 import { toSkiAreaSummaryWithAssignment } from "../transforms/toSkiAreaSummary";
 import { Logger } from "../utils/Logger";
 import { getSnowCoverHistoryFromCache } from "../utils/snowCoverHistory";
+import { asyncGeneratorToStream } from "../utils/StreamUtils";
 import { AugmentedMapFeature, RunObject, SkiAreaAssignment } from "./MapObject";
 import objectToFeature from "./ObjectToFeature";
 import { ClusteringDatabase } from "./database/ClusteringDatabase";
 
-export default async function augmentGeoJSONFeatures(
-  inputPath: string,
-  outputPath: string,
+export default async function augmentFeatures(
+  dataStore: PostGISDataStore,
   database: ClusteringDatabase,
   featureType: FeatureType,
   snowCoverConfig: SnowCoverConfig | null,
   postgresConfig: PostgresConfig,
 ) {
+  const stream =
+    featureType === FeatureType.Run
+      ? asyncGeneratorToStream(dataStore.streamProcessingRuns())
+      : asyncGeneratorToStream(dataStore.streamProcessingLifts());
+
+  const tableType = featureType === FeatureType.Run ? "runs" : "lifts";
+
   await streamToPromise(
-    readGeoJSONFeatures(inputPath)
+    stream
       .pipe(
         mapAsync(async (feature: AugmentedMapFeature) => {
           // Fetch the map object from the database
@@ -78,8 +84,7 @@ export default async function augmentGeoJSONFeatures(
           return feature;
         }, 10),
       )
-      .pipe(toFeatureCollection())
-      .pipe(createWriteStream(outputPath)),
+      .pipe(toOutputTable(dataStore, tableType)),
   );
 }
 

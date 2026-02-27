@@ -15,6 +15,7 @@ import {
 } from "../TestHelpers";
 import clusterSkiAreas from "./ClusterSkiAreas";
 import { Config, getPostgresTestConfig } from "../Config";
+import { PostGISDataStore } from "../io/PostGISDataStore";
 
 jest.setTimeout(60 * 1000);
 
@@ -25,8 +26,34 @@ jest.mock("uuid", () => {
   };
 });
 
+let testConfig: Config;
+let dataStore: PostGISDataStore;
+
 beforeEach(() => {
   mockUuidCount = 0;
+  testConfig = {
+    workingDir: TestHelpers.getTempWorkingDir(),
+    outputDir: TestHelpers.getTempWorkingDir(),
+    bbox: null,
+    elevationServer: null,
+    geocodingServer: null,
+    snowCover: null,
+    tiles: null,
+    tiles3D: null,
+    postgresCache: getPostgresTestConfig(),
+    output: { toFiles: true },
+    conflateElevation: true,
+    exportOnly: false,
+    startAtAssociatingHighways: false,
+    continueWithDEM: false,
+    continueProcessingPeaks: false,
+    localOSMDatabase: null,
+  };
+  dataStore = new PostGISDataStore(testConfig.postgresCache);
+});
+
+afterEach(async () => {
+  await dataStore.close();
 });
 
 /**
@@ -44,9 +71,7 @@ beforeEach(() => {
  * clustering resulted in empty skiAreas arrays, but that has been fixed.
  */
 it("correctly associates lifts and runs with ski areas", async () => {
-  const paths = TestHelpers.getFilePaths();
-
-  TestHelpers.mockFeatureFiles(
+  await TestHelpers.mockProcessingFeatures(
     [
       TestHelpers.mockSkiAreaFeature({
         id: "test-ski-area-1",
@@ -94,39 +119,20 @@ it("correctly associates lifts and runs with ski areas", async () => {
         },
       }),
     ],
-    paths.intermediate,
+    dataStore,
   );
 
-  // Create test config
-  const testConfig: Config = {
-    workingDir: TestHelpers.getTempWorkingDir(),
-    outputDir: TestHelpers.getTempWorkingDir(),
-    bbox: null,
-    elevationServer: null,
-    geocodingServer: null,
-    snowCover: null,
-    tiles: null,
-    tiles3D: null,
-    postgresCache: getPostgresTestConfig(),
-    output: { toFiles: true, toPostgis: false },
-    conflateElevation: true,
-    exportOnly: false,
-    startAtAssociatingHighways: false,
-    localOSMDatabase: null,
-  };
+  await clusterSkiAreas(dataStore, testConfig);
 
-  // Use SQLite database
-  await clusterSkiAreas(paths.intermediate, paths.output, testConfig);
-
-  const lifts = TestHelpers.fileContents(paths.output.lifts).features.map(
+  const lifts = (await TestHelpers.outputContents(dataStore, "lifts")).features.map(
     simplifiedLiftFeature,
   );
 
-  const runs = TestHelpers.fileContents(paths.output.runs).features.map(
+  const runs = (await TestHelpers.outputContents(dataStore, "runs")).features.map(
     simplifiedRunFeature,
   );
 
-  const skiAreas = TestHelpers.fileContents(paths.output.skiAreas).features.map(
+  const skiAreas = (await TestHelpers.outputContents(dataStore, "ski_areas")).features.map(
     simplifiedSkiAreaFeature,
   );
 
@@ -161,9 +167,7 @@ it("correctly associates lifts and runs with ski areas", async () => {
  * clustering and augmentation pipeline.
  */
 it("verifies ski area associations persist through clustering and augmentation", async () => {
-  const paths = TestHelpers.getFilePaths();
-
-  TestHelpers.mockFeatureFiles(
+  await TestHelpers.mockProcessingFeatures(
     [
       TestHelpers.mockSkiAreaFeature({
         id: "ski-area-simple",
@@ -204,32 +208,13 @@ it("verifies ski area associations persist through clustering and augmentation",
         },
       }),
     ],
-    paths.intermediate,
+    dataStore,
   );
 
-  // Create test config
-  const testConfig: Config = {
-    workingDir: TestHelpers.getTempWorkingDir(),
-    outputDir: TestHelpers.getTempWorkingDir(),
-    bbox: null,
-    elevationServer: null,
-    geocodingServer: null,
-    snowCover: null,
-    tiles: null,
-    tiles3D: null,
-    postgresCache: getPostgresTestConfig(),
-    output: { toFiles: true, toPostgis: false },
-    conflateElevation: true,
-    exportOnly: false,
-    startAtAssociatingHighways: false,
-    localOSMDatabase: null,
-  };
+  await clusterSkiAreas(dataStore, testConfig);
 
-  // Use SQLite database
-  await clusterSkiAreas(paths.intermediate, paths.output, testConfig);
-
-  const outputRuns = TestHelpers.fileContents(paths.output.runs).features;
-  const outputLifts = TestHelpers.fileContents(paths.output.lifts).features;
+  const outputRuns = (await TestHelpers.outputContents(dataStore, "runs")).features;
+  const outputLifts = (await TestHelpers.outputContents(dataStore, "lifts")).features;
 
   // Verify that ski area associations are correctly populated
   expect(outputRuns[0]?.properties?.skiAreas).not.toEqual([]);
