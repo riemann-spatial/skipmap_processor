@@ -213,7 +213,7 @@ async function querySkiAreaRelations(
             ))::json AS geometry
      FROM public.relations r
      CROSS JOIN LATERAL jsonb_array_elements(r.members) AS m
-     JOIN public.ways w ON w.way_id = (m->>'ref')::bigint AND m->>'type' = 'way'
+     JOIN public.ways w ON w.way_id = (m->>'ref')::bigint AND m->>'type' = 'w'
      WHERE ${SKI_AREA_RELATION_LANDUSE_FILTER}
        AND ${bboxFilter.clause}
      GROUP BY r.relation_id, r.tags

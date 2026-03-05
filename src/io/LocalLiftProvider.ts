@@ -117,7 +117,7 @@ async function querySiteRailwayWays(
             hstore_to_json(w.tags) AS tags
      FROM public.relations r
      CROSS JOIN LATERAL jsonb_array_elements(r.members) AS m
-     JOIN public.ways w ON w.way_id = (m->>'ref')::bigint AND m->>'type' = 'way'
+     JOIN public.ways w ON w.way_id = (m->>'ref')::bigint AND m->>'type' = 'w'
      WHERE r.tags -> 'site' = 'piste'
        AND w.tags ? 'railway'
        AND ${bboxFilter.clause}`,
