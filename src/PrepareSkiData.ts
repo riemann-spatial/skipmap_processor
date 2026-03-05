@@ -272,6 +272,9 @@ export default async function prepare(
             // Process all feature types in parallel.
             // They share the elevation processor and tile cache, maximizing
             // cache hits for overlapping geographic areas.
+            const progressLabel = elevationTransform
+              ? "elevated"
+              : "processed";
             const parallelTasks: Promise<void>[] = [];
 
             parallelTasks.push(
@@ -293,7 +296,7 @@ export default async function prepare(
                       ).pipe(flatMap(formatSkiArea(InputSkiAreaType.SKIMAP_ORG))),
                     ])
                       .pipe(mapAsync(elevationTransform?.transform || null, 10))
-                      .pipe(logProgress("Ski areas", skiAreaCount, "elevated"))
+                      .pipe(logProgress("Ski areas", skiAreaCount, progressLabel))
                       .pipe(toProcessingTable(dataStore, "ski_areas")),
                   );
                 },
@@ -312,7 +315,7 @@ export default async function prepare(
                         .pipe(map(addSkiAreaSites(siteProvider)))
                         .pipe(accumulate(new RunNormalizerAccumulator()))
                         .pipe(mapAsync(elevationTransform?.transform || null, 10))
-                        .pipe(logProgress("Runs", null, "elevated"))
+                        .pipe(logProgress("Runs", null, progressLabel))
                         .pipe(toProcessingTable(dataStore, "runs")),
                     );
                   },
@@ -335,7 +338,7 @@ export default async function prepare(
                       .pipe(flatMap(formatLift))
                       .pipe(map(addSkiAreaSites(siteProvider)))
                       .pipe(mapAsync(elevationTransform?.transform || null, 10))
-                      .pipe(logProgress("Lifts", liftsCount, "elevated"))
+                      .pipe(logProgress("Lifts", liftsCount, progressLabel))
                       .pipe(toProcessingTable(dataStore, "lifts")),
                   );
                 },
@@ -353,7 +356,7 @@ export default async function prepare(
                         .pipe(
                           mapAsync(elevationTransform?.transform || null, 10),
                         )
-                        .pipe(logProgress("Highways", highwaysCount, "elevated"))
+                        .pipe(logProgress("Highways", highwaysCount, progressLabel))
                         .pipe(toProcessingTable(dataStore, "highways")),
                     );
                   },
@@ -370,7 +373,7 @@ export default async function prepare(
                       asyncGeneratorToStream(dataStore.streamInputPeaks())
                         .pipe(flatMapArray(formatPeak))
                         .pipe(mapAsync(peakElevationTransform, 10))
-                        .pipe(logProgress("Peaks", peaksCount, "elevated"))
+                        .pipe(logProgress("Peaks", peaksCount, progressLabel))
                         .pipe(toProcessingTable(dataStore, "peaks")),
                     );
                   },
@@ -382,6 +385,9 @@ export default async function prepare(
           } else if (config.localOSMDatabase) {
             // continueProcessingPeaks mode: only process peaks
             const peaksCount = await dataStore.getInputPeaksCount();
+            const peakProgressLabel = peakElevationTransform
+              ? "elevated"
+              : "processed";
 
             await performanceMonitor.withOperation(
               "Processing peaks",
@@ -390,7 +396,7 @@ export default async function prepare(
                   asyncGeneratorToStream(dataStore.streamInputPeaks())
                     .pipe(flatMapArray(formatPeak))
                     .pipe(mapAsync(peakElevationTransform, 10))
-                    .pipe(logProgress("Peaks", peaksCount, "elevated"))
+                    .pipe(logProgress("Peaks", peaksCount, peakProgressLabel))
                     .pipe(toProcessingTable(dataStore, "peaks")),
                 );
               },
