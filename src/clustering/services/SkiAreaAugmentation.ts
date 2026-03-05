@@ -235,7 +235,9 @@ export class SkiAreaAugmentation {
     snowCoverConfig: SnowCoverConfig | null,
     postgresConfig: PostgresConfig,
   ): Promise<void> {
-    Logger.log(`Augmenting ${featureType} features from processing to output tables`);
+    Logger.log(
+      `Augmenting ${featureType} features from processing to output tables`,
+    );
 
     await augmentFeatures(
       dataStore,

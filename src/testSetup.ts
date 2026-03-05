@@ -266,7 +266,9 @@ export default async function globalSetup(): Promise<void> {
         );
       `);
 
-      console.log("Ensured input, processing, and output schema and tables exist");
+      console.log(
+        "Ensured input, processing, and output schema and tables exist",
+      );
     } finally {
       testClient.release();
     }

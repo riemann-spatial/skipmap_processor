@@ -1,8 +1,8 @@
 import { LiftFeature, RunFeature, SkiAreaFeature } from "openskidata-format";
+import { Transform } from "stream";
 import StreamToPromise from "stream-to-promise";
 import { SnowCoverConfig } from "../../Config";
 import { PostGISDataStore } from "../../io/PostGISDataStore";
-import { mapAsync } from "../../transforms/StreamTransforms";
 import { Logger } from "../../utils/Logger";
 import { asyncGeneratorToStream } from "../../utils/StreamUtils";
 import { VIIRSPixelExtractor } from "../../utils/VIIRSPixelExtractor";
@@ -51,18 +51,43 @@ export class DataLoader {
     stream: NodeJS.ReadableStream,
     prepare: (feature: T) => DraftMapObject,
   ): NodeJS.ReadableStream {
-    return stream.pipe(
-      mapAsync(async (feature: unknown) => {
+    const BATCH_SIZE = 500;
+    let buffer: MapObject[] = [];
+    const database = this.database;
+
+    const batchTransform = new Transform({
+      objectMode: true,
+      async transform(feature: unknown, _encoding, callback) {
         try {
           const preparedObject = prepare(feature as T) as MapObject;
-          await this.database.saveObject(preparedObject);
+          buffer.push(preparedObject);
+          if (buffer.length >= BATCH_SIZE) {
+            const batch = buffer;
+            buffer = [];
+            await database.saveObjects(batch);
+          }
+          callback();
         } catch (e) {
           Logger.error(
             "Failed loading feature " + JSON.stringify(feature),
             e instanceof Error ? e.message : String(e),
           );
+          callback();
         }
-      }, 10),
-    );
+      },
+      async flush(callback) {
+        try {
+          if (buffer.length > 0) {
+            await database.saveObjects(buffer);
+            buffer = [];
+          }
+          callback();
+        } catch (e) {
+          callback(e instanceof Error ? e : new Error(String(e)));
+        }
+      },
+    });
+
+    return stream.pipe(batchTransform);
   }
 }

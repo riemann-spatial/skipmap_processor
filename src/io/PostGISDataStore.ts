@@ -276,7 +276,9 @@ export class PostGISDataStore {
   async copyPeaksFromProcessingToOutput(): Promise<void> {
     const client = await this.pool.connect();
     try {
-      await client.query(`TRUNCATE TABLE output.peaks RESTART IDENTITY CASCADE`);
+      await client.query(
+        `TRUNCATE TABLE output.peaks RESTART IDENTITY CASCADE`,
+      );
       await client.query(`
         INSERT INTO output.peaks (feature_id, geometry, type, name, elevation, elevation_source, prominence, natural_type, websites, wikidata_id, wikipedia_id, sources, properties)
         SELECT
@@ -790,10 +792,10 @@ export class PostGISDataStore {
 
         batch.forEach((feature, idx) => {
           const p = feature.properties;
-          const numCols = 17;
+          const numCols = 22;
           const offset = idx * numCols;
           placeholders.push(
-            `($${offset + 1}, ST_Force3D(ST_GeomFromGeoJSON($${offset + 2})), $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8}, $${offset + 9}, $${offset + 10}, $${offset + 11}, $${offset + 12}, $${offset + 13}, $${offset + 14}, $${offset + 15}, $${offset + 16}, $${offset + 17})`,
+            `($${offset + 1}, ST_Force3D(ST_GeomFromGeoJSON($${offset + 2})), $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8}, $${offset + 9}, $${offset + 10}, $${offset + 11}, $${offset + 12}, $${offset + 13}, $${offset + 14}, $${offset + 15}, $${offset + 16}, $${offset + 17}, $${offset + 18}::jsonb, $${offset + 19}::jsonb, $${offset + 20}::jsonb, $${offset + 21}::jsonb, $${offset + 22}::jsonb)`,
           );
           values.push(
             feature.feature_id,
@@ -813,29 +815,16 @@ export class PostGISDataStore {
             toString(p.status),
             toTextArray(p.websites),
             toString(p.wikidataID),
-          );
-        });
-
-        // Second query for JSONB columns
-        const jsonValues: unknown[] = [];
-        const jsonPlaceholders: string[] = [];
-        batch.forEach((feature, idx) => {
-          const p = feature.properties;
-          const offset = idx * 5;
-          jsonPlaceholders.push(
-            `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5})`,
-          );
-          jsonValues.push(
-            feature.feature_id,
             p.skiAreas ? JSON.stringify(p.skiAreas) : null,
             p.sources ? JSON.stringify(p.sources) : null,
             p.places ? JSON.stringify(p.places) : null,
             p.elevationProfile ? JSON.stringify(p.elevationProfile) : null,
+            JSON.stringify(p),
           );
         });
 
         await client.query(
-          `INSERT INTO output.runs (feature_id, geometry, type, name, ref, description, uses, difficulty, difficulty_convention, oneway, gladed, patrolled, lit, grooming, status, websites, wikidata_id)
+          `INSERT INTO output.runs (feature_id, geometry, type, name, ref, description, uses, difficulty, difficulty_convention, oneway, gladed, patrolled, lit, grooming, status, websites, wikidata_id, ski_areas, sources, places, elevation_profile, properties)
            VALUES ${placeholders.join(", ")}
            ON CONFLICT (feature_id) DO UPDATE SET
              geometry = EXCLUDED.geometry,
@@ -853,32 +842,14 @@ export class PostGISDataStore {
              grooming = EXCLUDED.grooming,
              status = EXCLUDED.status,
              websites = EXCLUDED.websites,
-             wikidata_id = EXCLUDED.wikidata_id`,
+             wikidata_id = EXCLUDED.wikidata_id,
+             ski_areas = EXCLUDED.ski_areas,
+             sources = EXCLUDED.sources,
+             places = EXCLUDED.places,
+             elevation_profile = EXCLUDED.elevation_profile,
+             properties = EXCLUDED.properties`,
           values,
         );
-
-        // Update JSONB columns and full properties
-        for (let j = 0; j < batch.length; j++) {
-          const feature = batch[j];
-          const p = feature.properties;
-          await client.query(
-            `UPDATE output.runs SET
-               ski_areas = $2,
-               sources = $3,
-               places = $4,
-               elevation_profile = $5,
-               properties = $6
-             WHERE feature_id = $1`,
-            [
-              feature.feature_id,
-              p.skiAreas ? JSON.stringify(p.skiAreas) : null,
-              p.sources ? JSON.stringify(p.sources) : null,
-              p.places ? JSON.stringify(p.places) : null,
-              p.elevationProfile ? JSON.stringify(p.elevationProfile) : null,
-              JSON.stringify(p),
-            ],
-          );
-        }
       }
     } finally {
       client.release();
@@ -898,10 +869,10 @@ export class PostGISDataStore {
 
         batch.forEach((feature, idx) => {
           const p = feature.properties;
-          const numCols = 17;
+          const numCols = 22;
           const offset = idx * numCols;
           placeholders.push(
-            `($${offset + 1}, ST_Force3D(ST_GeomFromGeoJSON($${offset + 2})), $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8}, $${offset + 9}, $${offset + 10}, $${offset + 11}, $${offset + 12}, $${offset + 13}, $${offset + 14}, $${offset + 15}, $${offset + 16}, $${offset + 17})`,
+            `($${offset + 1}, ST_Force3D(ST_GeomFromGeoJSON($${offset + 2})), $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8}, $${offset + 9}, $${offset + 10}, $${offset + 11}, $${offset + 12}, $${offset + 13}, $${offset + 14}, $${offset + 15}, $${offset + 16}, $${offset + 17}, $${offset + 18}, $${offset + 19}::jsonb, $${offset + 20}::jsonb, $${offset + 21}::jsonb, $${offset + 22}::jsonb)`,
           );
           values.push(
             feature.feature_id,
@@ -921,11 +892,16 @@ export class PostGISDataStore {
             toBoolean(p.heating),
             toBoolean(p.detachable),
             toTextArray(p.websites),
+            toString(p.wikidataID),
+            p.skiAreas ? JSON.stringify(p.skiAreas) : null,
+            p.sources ? JSON.stringify(p.sources) : null,
+            p.places ? JSON.stringify(p.places) : null,
+            JSON.stringify(p),
           );
         });
 
         await client.query(
-          `INSERT INTO output.lifts (feature_id, geometry, type, name, ref, ref_fr_cairn, description, lift_type, status, oneway, occupancy, capacity, duration, bubble, heating, detachable, websites)
+          `INSERT INTO output.lifts (feature_id, geometry, type, name, ref, ref_fr_cairn, description, lift_type, status, oneway, occupancy, capacity, duration, bubble, heating, detachable, websites, wikidata_id, ski_areas, sources, places, properties)
            VALUES ${placeholders.join(", ")}
            ON CONFLICT (feature_id) DO UPDATE SET
              geometry = EXCLUDED.geometry,
@@ -943,32 +919,14 @@ export class PostGISDataStore {
              bubble = EXCLUDED.bubble,
              heating = EXCLUDED.heating,
              detachable = EXCLUDED.detachable,
-             websites = EXCLUDED.websites`,
+             websites = EXCLUDED.websites,
+             wikidata_id = EXCLUDED.wikidata_id,
+             ski_areas = EXCLUDED.ski_areas,
+             sources = EXCLUDED.sources,
+             places = EXCLUDED.places,
+             properties = EXCLUDED.properties`,
           values,
         );
-
-        // Update JSONB columns and full properties
-        for (let j = 0; j < batch.length; j++) {
-          const feature = batch[j];
-          const p = feature.properties;
-          await client.query(
-            `UPDATE output.lifts SET
-               wikidata_id = $2,
-               ski_areas = $3,
-               sources = $4,
-               places = $5,
-               properties = $6
-             WHERE feature_id = $1`,
-            [
-              feature.feature_id,
-              toString(p.wikidataID),
-              p.skiAreas ? JSON.stringify(p.skiAreas) : null,
-              p.sources ? JSON.stringify(p.sources) : null,
-              p.places ? JSON.stringify(p.places) : null,
-              JSON.stringify(p),
-            ],
-          );
-        }
       }
     } finally {
       client.release();
@@ -988,10 +946,10 @@ export class PostGISDataStore {
 
         batch.forEach((feature, idx) => {
           const p = feature.properties;
-          const numCols = 9;
+          const numCols = 13;
           const offset = idx * numCols;
           placeholders.push(
-            `($${offset + 1}, ST_Force3D(ST_GeomFromGeoJSON($${offset + 2})), $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8}, $${offset + 9})`,
+            `($${offset + 1}, ST_Force3D(ST_GeomFromGeoJSON($${offset + 2})), $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8}, $${offset + 9}, $${offset + 10}::jsonb, $${offset + 11}::jsonb, $${offset + 12}::jsonb, $${offset + 13}::jsonb)`,
           );
           values.push(
             feature.feature_id,
@@ -1003,11 +961,15 @@ export class PostGISDataStore {
             toString(p.runConvention),
             toTextArray(p.websites),
             toString(p.wikidataID),
+            p.sources ? JSON.stringify(p.sources) : null,
+            p.places ? JSON.stringify(p.places) : null,
+            p.statistics ? JSON.stringify(p.statistics) : null,
+            JSON.stringify(p),
           );
         });
 
         await client.query(
-          `INSERT INTO output.ski_areas (feature_id, geometry, type, name, status, activities, run_convention, websites, wikidata_id)
+          `INSERT INTO output.ski_areas (feature_id, geometry, type, name, status, activities, run_convention, websites, wikidata_id, sources, places, statistics, properties)
            VALUES ${placeholders.join(", ")}
            ON CONFLICT (feature_id) DO UPDATE SET
              geometry = EXCLUDED.geometry,
@@ -1017,30 +979,13 @@ export class PostGISDataStore {
              activities = EXCLUDED.activities,
              run_convention = EXCLUDED.run_convention,
              websites = EXCLUDED.websites,
-             wikidata_id = EXCLUDED.wikidata_id`,
+             wikidata_id = EXCLUDED.wikidata_id,
+             sources = EXCLUDED.sources,
+             places = EXCLUDED.places,
+             statistics = EXCLUDED.statistics,
+             properties = EXCLUDED.properties`,
           values,
         );
-
-        // Update JSONB columns and full properties
-        for (let j = 0; j < batch.length; j++) {
-          const feature = batch[j];
-          const p = feature.properties;
-          await client.query(
-            `UPDATE output.ski_areas SET
-               sources = $2,
-               places = $3,
-               statistics = $4,
-               properties = $5
-             WHERE feature_id = $1`,
-            [
-              feature.feature_id,
-              p.sources ? JSON.stringify(p.sources) : null,
-              p.places ? JSON.stringify(p.places) : null,
-              p.statistics ? JSON.stringify(p.statistics) : null,
-              JSON.stringify(p),
-            ],
-          );
-        }
       }
     } finally {
       client.release();

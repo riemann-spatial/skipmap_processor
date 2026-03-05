@@ -24,10 +24,7 @@ import { formatLift } from "./transforms/LiftFormatter";
 import * as MapboxGLFormatter from "./transforms/MapboxGLFormatter";
 import { toProcessingTable } from "./transforms/ProcessingTableWriter";
 import { formatRun } from "./transforms/RunFormatter";
-import {
-  InputSkiAreaType,
-  formatSkiArea,
-} from "./transforms/SkiAreaFormatter";
+import { InputSkiAreaType, formatSkiArea } from "./transforms/SkiAreaFormatter";
 import { generate3DTiles } from "./transforms/Tiles3DGenerator";
 import { generateTiles } from "./transforms/TilesGenerator";
 import { Logger } from "./utils/Logger";
@@ -116,10 +113,7 @@ async function fetchSnowCoverIfEnabled(
   });
 }
 
-export default async function prepare(
-  paths: OutputPaths,
-  config: Config,
-) {
+export default async function prepare(paths: OutputPaths, config: Config) {
   const dataStore = getPostGISDataStore(config.postgresCache);
 
   if (config.exportOnly) {
@@ -172,9 +166,7 @@ export default async function prepare(
   }
 
   if (config.continueProcessingPeaks) {
-    Logger.log(
-      "CONTINUE_PROCESSING_PEAKS: skipping to peaks processing step",
-    );
+    Logger.log("CONTINUE_PROCESSING_PEAKS: skipping to peaks processing step");
 
     if (!config.localOSMDatabase) {
       throw new Error(
@@ -226,8 +218,7 @@ export default async function prepare(
                   // OSM ele tag is valid, skip DEM lookup
                   return feature;
                 }
-                const result =
-                  await elevationTransform.transform(feature);
+                const result = await elevationTransform.transform(feature);
                 const peakResult = result as PeakFeature;
                 if (
                   peakResult.geometry.coordinates.length >= 3 &&
@@ -272,9 +263,7 @@ export default async function prepare(
             // Process all feature types in parallel.
             // They share the elevation processor and tile cache, maximizing
             // cache hits for overlapping geographic areas.
-            const progressLabel = elevationTransform
-              ? "elevated"
-              : "processed";
+            const progressLabel = elevationTransform ? "elevated" : "processed";
             const parallelTasks: Promise<void>[] = [];
 
             parallelTasks.push(
@@ -293,10 +282,14 @@ export default async function prepare(
                       Readable.from(siteProvider.getGeoJSONSites()),
                       asyncGeneratorToStream(
                         dataStore.streamInputSkiAreas("skimap"),
-                      ).pipe(flatMap(formatSkiArea(InputSkiAreaType.SKIMAP_ORG))),
+                      ).pipe(
+                        flatMap(formatSkiArea(InputSkiAreaType.SKIMAP_ORG)),
+                      ),
                     ])
                       .pipe(mapAsync(elevationTransform?.transform || null, 10))
-                      .pipe(logProgress("Ski areas", skiAreaCount, progressLabel))
+                      .pipe(
+                        logProgress("Ski areas", skiAreaCount, progressLabel),
+                      )
                       .pipe(toProcessingTable(dataStore, "ski_areas")),
                   );
                 },
@@ -314,7 +307,9 @@ export default async function prepare(
                         .pipe(flatMapArray(formatRun))
                         .pipe(map(addSkiAreaSites(siteProvider)))
                         .pipe(accumulate(new RunNormalizerAccumulator()))
-                        .pipe(mapAsync(elevationTransform?.transform || null, 10))
+                        .pipe(
+                          mapAsync(elevationTransform?.transform || null, 10),
+                        )
                         .pipe(logProgress("Runs", null, progressLabel))
                         .pipe(toProcessingTable(dataStore, "runs")),
                     );
@@ -330,19 +325,16 @@ export default async function prepare(
             );
 
             parallelTasks.push(
-              performanceMonitor.withOperation(
-                "Processing lifts",
-                async () => {
-                  await StreamToPromise(
-                    asyncGeneratorToStream(dataStore.streamInputLifts())
-                      .pipe(flatMap(formatLift))
-                      .pipe(map(addSkiAreaSites(siteProvider)))
-                      .pipe(mapAsync(elevationTransform?.transform || null, 10))
-                      .pipe(logProgress("Lifts", liftsCount, progressLabel))
-                      .pipe(toProcessingTable(dataStore, "lifts")),
-                  );
-                },
-              ),
+              performanceMonitor.withOperation("Processing lifts", async () => {
+                await StreamToPromise(
+                  asyncGeneratorToStream(dataStore.streamInputLifts())
+                    .pipe(flatMap(formatLift))
+                    .pipe(map(addSkiAreaSites(siteProvider)))
+                    .pipe(mapAsync(elevationTransform?.transform || null, 10))
+                    .pipe(logProgress("Lifts", liftsCount, progressLabel))
+                    .pipe(toProcessingTable(dataStore, "lifts")),
+                );
+              }),
             );
 
             if (process.env.COMPILE_HIGHWAY === "1") {
@@ -356,7 +348,9 @@ export default async function prepare(
                         .pipe(
                           mapAsync(elevationTransform?.transform || null, 10),
                         )
-                        .pipe(logProgress("Highways", highwaysCount, progressLabel))
+                        .pipe(
+                          logProgress("Highways", highwaysCount, progressLabel),
+                        )
                         .pipe(toProcessingTable(dataStore, "highways")),
                     );
                   },
@@ -409,12 +403,15 @@ export default async function prepare(
         }
       },
     );
-
   } // end if (!skipPhase2)
 
   if (!config.exportOnly) {
     await performanceMonitor.withPhase("Phase 3: Clustering", async () => {
-      await clusterSkiAreas(dataStore, config, process.env.COMPILE_HIGHWAY === "1");
+      await clusterSkiAreas(
+        dataStore,
+        config,
+        process.env.COMPILE_HIGHWAY === "1",
+      );
     });
 
     if (
@@ -493,9 +490,7 @@ export default async function prepare(
                   streamForType(type)
                     .pipe(flatMap(MapboxGLFormatter.formatter(type)))
                     .pipe(toFeatureCollection())
-                    .pipe(
-                      createWriteStream(getPath(paths.mapboxGL, type)),
-                    ),
+                    .pipe(createWriteStream(getPath(paths.mapboxGL, type))),
                 );
               },
             ),
@@ -599,11 +594,7 @@ export default async function prepare(
       const tilesConfig = config.tiles;
       if (tilesConfig) {
         await performanceMonitor.withOperation("Generating tiles", async () => {
-          await generateTiles(
-            paths.mapboxGL,
-            config.workingDir,
-            tilesConfig,
-          );
+          await generateTiles(paths.mapboxGL, config.workingDir, tilesConfig);
         });
       }
     } // end if (!config.exportOnly && config.output.toFiles) within Phase 4
