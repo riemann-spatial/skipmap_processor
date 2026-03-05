@@ -470,7 +470,7 @@ export default async function prepare(
   } // end if (!config.exportOnly)
 
   await performanceMonitor.withPhase("Phase 4: Output Generation", async () => {
-    if (!config.exportOnly) {
+    if (!config.exportOnly && config.output.toFiles) {
       await performanceMonitor.withOperation(
         "Exporting to Mapbox GeoJSON",
         async () => {
@@ -606,7 +606,7 @@ export default async function prepare(
           );
         });
       }
-    } // end if (!config.exportOnly) within Phase 4
+    } // end if (!config.exportOnly && config.output.toFiles) within Phase 4
 
     // Generate 3D Tiles if enabled (requires output tables)
     const tiles3DConfig = config.tiles3D;
