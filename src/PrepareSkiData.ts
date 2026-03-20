@@ -214,21 +214,30 @@ export default async function prepare(paths: OutputPaths, config: Config) {
           // Build the peak elevation transform once (used by peaks pipeline below)
           const peakElevationTransform = elevationTransform
             ? async (feature: PeakFeature): Promise<PeakFeature> => {
-                if (feature.properties.elevation !== null) {
-                  // OSM ele tag is valid, skip DEM lookup
-                  return feature;
+                if (feature.properties.elevation === null) {
+                  // No OSM elevation, try DEM
+                  const result = await elevationTransform.transform(feature);
+                  const peakResult = result as PeakFeature;
+                  if (
+                    peakResult.geometry.coordinates.length >= 3 &&
+                    Number.isFinite(peakResult.geometry.coordinates[2])
+                  ) {
+                    peakResult.properties.elevation =
+                      peakResult.geometry.coordinates[2];
+                    peakResult.properties.elevationSource = "dem";
+                  }
+                  feature = peakResult;
                 }
-                const result = await elevationTransform.transform(feature);
-                const peakResult = result as PeakFeature;
+                // Always set Z from properties.elevation if available
                 if (
-                  peakResult.geometry.coordinates.length >= 3 &&
-                  Number.isFinite(peakResult.geometry.coordinates[2])
+                  feature.properties.elevation !== null &&
+                  feature.geometry.coordinates.length === 2
                 ) {
-                  peakResult.properties.elevation =
-                    peakResult.geometry.coordinates[2];
-                  peakResult.properties.elevationSource = "dem";
+                  feature.geometry.coordinates.push(
+                    feature.properties.elevation,
+                  );
                 }
-                return peakResult;
+                return feature;
               }
             : null;
 
