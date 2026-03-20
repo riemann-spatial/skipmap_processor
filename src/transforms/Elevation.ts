@@ -7,6 +7,7 @@ import {
   RunFeature,
   SkiAreaFeature,
 } from "openskidata-format";
+import { AlpineHutFeature } from "../features/AlpineHutFeature";
 import { PeakFeature } from "../features/PeakFeature";
 import {
   AWS_TERRAIN_TILES_URL,
@@ -128,7 +129,8 @@ export type ElevationFeature =
   | RunFeature
   | LiftFeature
   | SkiAreaFeature
-  | PeakFeature;
+  | PeakFeature
+  | AlpineHutFeature;
 
 export interface ElevationProcessor {
   processFeature: (feature: ElevationFeature) => Promise<ElevationFeature>;
@@ -619,6 +621,12 @@ function getCoordinates(feature: ElevationFeature) {
     case "MultiPolygon":
       coordinates = feature.geometry.coordinates.flat(2);
       break;
+    case "MultiPoint":
+      coordinates = feature.geometry.coordinates;
+      break;
+    case "GeometryCollection":
+      coordinates = [];
+      break;
     default:
       const exhaustiveCheck: never = geometryType;
       throw new GeometryError(
@@ -669,6 +677,13 @@ function addElevations(
           });
         });
       });
+    case "MultiPoint":
+      return feature.geometry.coordinates.forEach((coords) => {
+        addElevationToCoords(coords, elevations[i]);
+        i++;
+      });
+    case "GeometryCollection":
+      return;
     default:
       const exhaustiveCheck: never = geometryType;
       throw new GeometryError(

@@ -187,6 +187,30 @@ export class DatabaseInitializer {
       );
       CREATE INDEX peaks_input_geometry_idx ON input.peaks USING GIST (geometry);
       CREATE INDEX peaks_input_osm_id_idx ON input.peaks (osm_id);
+
+      -- input.facilities: Raw facility POIs from local OSM planet database
+      CREATE TABLE input.facilities (
+        id SERIAL PRIMARY KEY,
+        osm_id BIGINT,
+        osm_type TEXT,
+        geometry GEOMETRY(Geometry, 4326),
+        properties JSONB,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+      CREATE INDEX facilities_input_geometry_idx ON input.facilities USING GIST (geometry);
+      CREATE INDEX facilities_input_osm_id_idx ON input.facilities (osm_id);
+
+      -- input.alpine_huts: Raw alpine hut features from local OSM planet database
+      CREATE TABLE input.alpine_huts (
+        id SERIAL PRIMARY KEY,
+        osm_id BIGINT,
+        osm_type TEXT,
+        geometry GEOMETRY(Geometry, 4326),
+        properties JSONB,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+      CREATE INDEX alpine_huts_input_geometry_idx ON input.alpine_huts USING GIST (geometry);
+      CREATE INDEX alpine_huts_input_osm_id_idx ON input.alpine_huts (osm_id);
     `);
   }
 
@@ -241,6 +265,26 @@ export class DatabaseInitializer {
       );
       CREATE INDEX processing_peaks_feature_id_idx ON processing.peaks (feature_id);
       CREATE INDEX processing_peaks_geometry_idx ON processing.peaks USING GIST (geometry);
+
+      -- processing.facilities: Formatted facility features
+      CREATE TABLE processing.facilities (
+        id SERIAL PRIMARY KEY,
+        feature_id TEXT NOT NULL,
+        geometry GEOMETRY(Geometry, 4326),
+        properties JSONB NOT NULL
+      );
+      CREATE INDEX processing_facilities_feature_id_idx ON processing.facilities (feature_id);
+      CREATE INDEX processing_facilities_geometry_idx ON processing.facilities USING GIST (geometry);
+
+      -- processing.alpine_huts: Formatted alpine hut features
+      CREATE TABLE processing.alpine_huts (
+        id SERIAL PRIMARY KEY,
+        feature_id TEXT NOT NULL,
+        geometry GEOMETRY(Geometry, 4326),
+        properties JSONB NOT NULL
+      );
+      CREATE INDEX processing_alpine_huts_feature_id_idx ON processing.alpine_huts (feature_id);
+      CREATE INDEX processing_alpine_huts_geometry_idx ON processing.alpine_huts USING GIST (geometry);
     `);
   }
 
@@ -390,6 +434,58 @@ export class DatabaseInitializer {
       CREATE INDEX peaks_output_name_idx ON output.peaks (name);
       CREATE INDEX peaks_output_elevation_idx ON output.peaks (elevation);
       CREATE INDEX peaks_output_natural_type_idx ON output.peaks (natural_type);
+
+      -- output.facilities: Processed facility POIs with exploded properties
+      CREATE TABLE output.facilities (
+        id SERIAL PRIMARY KEY,
+        feature_id TEXT UNIQUE NOT NULL,
+        geometry GEOMETRY(Geometry, 4326),
+        type TEXT,
+        name TEXT,
+        facility_type TEXT,
+        opening_hours TEXT,
+        phone TEXT,
+        fee TEXT,
+        capacity REAL,
+        access TEXT,
+        cuisine TEXT,
+        operator TEXT,
+        websites TEXT[],
+        wikidata_id TEXT,
+        wikipedia_id TEXT,
+        sources JSONB,
+        properties JSONB,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+      CREATE INDEX facilities_output_geometry_idx ON output.facilities USING GIST (geometry);
+      CREATE INDEX facilities_output_feature_id_idx ON output.facilities (feature_id);
+      CREATE INDEX facilities_output_name_idx ON output.facilities (name);
+      CREATE INDEX facilities_output_facility_type_idx ON output.facilities (facility_type);
+
+      -- output.alpine_huts: Processed alpine hut features with exploded properties
+      CREATE TABLE output.alpine_huts (
+        id SERIAL PRIMARY KEY,
+        feature_id TEXT UNIQUE NOT NULL,
+        geometry GEOMETRY(Geometry, 4326),
+        type TEXT,
+        name TEXT,
+        elevation REAL,
+        elevation_source TEXT,
+        capacity REAL,
+        operator TEXT,
+        opening_hours TEXT,
+        phone TEXT,
+        websites TEXT[],
+        wikidata_id TEXT,
+        wikipedia_id TEXT,
+        sources JSONB,
+        properties JSONB,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+      CREATE INDEX alpine_huts_output_geometry_idx ON output.alpine_huts USING GIST (geometry);
+      CREATE INDEX alpine_huts_output_feature_id_idx ON output.alpine_huts (feature_id);
+      CREATE INDEX alpine_huts_output_name_idx ON output.alpine_huts (name);
+      CREATE INDEX alpine_huts_output_elevation_idx ON output.alpine_huts (elevation);
     `);
   }
 

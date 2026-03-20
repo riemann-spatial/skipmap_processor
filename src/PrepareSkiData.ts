@@ -17,7 +17,10 @@ import { PostGISDataStore, getPostGISDataStore } from "./io/PostGISDataStore";
 import * as CSVFormatter from "./transforms/CSVFormatter";
 import { createElevationProcessor } from "./transforms/Elevation";
 import toFeatureCollection from "./transforms/FeatureCollection";
+import { AlpineHutFeature } from "./features/AlpineHutFeature";
 import { PeakFeature } from "./features/PeakFeature";
+import { formatAlpineHut } from "./transforms/AlpineHutFormatter";
+import { formatFacility } from "./transforms/FacilityFormatter";
 import { formatHighway } from "./transforms/HighwayFormatter";
 import { formatPeak } from "./transforms/PeakFormatter";
 import { formatLift } from "./transforms/LiftFormatter";
@@ -259,6 +262,8 @@ export default async function prepare(paths: OutputPaths, config: Config) {
             }
             if (config.localOSMDatabase) {
               countQueries.push(dataStore.getInputPeaksCount());
+              countQueries.push(dataStore.getInputFacilitiesCount());
+              countQueries.push(dataStore.getInputAlpineHutsCount());
             }
             const counts = await Promise.all(countQueries);
             let i = 0;
@@ -268,6 +273,8 @@ export default async function prepare(paths: OutputPaths, config: Config) {
             const highwaysCount =
               process.env.COMPILE_HIGHWAY === "1" ? counts[i++] : 0;
             const peaksCount = config.localOSMDatabase ? counts[i++] : 0;
+            const facilitiesCount = config.localOSMDatabase ? counts[i++] : 0;
+            const alpineHutsCount = config.localOSMDatabase ? counts[i++] : 0;
 
             // Process all feature types in parallel.
             // They share the elevation processor and tile cache, maximizing
@@ -382,6 +389,81 @@ export default async function prepare(paths: OutputPaths, config: Config) {
                   },
                 ),
               );
+
+              parallelTasks.push(
+                performanceMonitor.withOperation(
+                  "Processing facilities",
+                  async () => {
+                    await StreamToPromise(
+                      asyncGeneratorToStream(dataStore.streamInputFacilities())
+                        .pipe(flatMapArray(formatFacility))
+                        .pipe(
+                          logProgress(
+                            "Facilities",
+                            facilitiesCount,
+                            "processed",
+                          ),
+                        )
+                        .pipe(toProcessingTable(dataStore, "facilities")),
+                    );
+                  },
+                ),
+              );
+
+              // Build the alpine hut elevation transform (reuses the same elevation processor)
+              const alpineHutElevationTransform = elevationTransform
+                ? async (
+                    feature: AlpineHutFeature,
+                  ): Promise<AlpineHutFeature> => {
+                    if (feature.properties.elevation === null) {
+                      const result =
+                        await elevationTransform.transform(feature);
+                      const hutResult = result as AlpineHutFeature;
+                      if (
+                        hutResult.geometry.type === "Point" &&
+                        hutResult.geometry.coordinates.length >= 3 &&
+                        Number.isFinite(hutResult.geometry.coordinates[2])
+                      ) {
+                        hutResult.properties.elevation =
+                          hutResult.geometry.coordinates[2];
+                        hutResult.properties.elevationSource = "dem";
+                      }
+                      feature = hutResult;
+                    }
+                    // Set Z from properties.elevation if Point and available
+                    if (
+                      feature.properties.elevation !== null &&
+                      feature.geometry.type === "Point" &&
+                      feature.geometry.coordinates.length === 2
+                    ) {
+                      feature.geometry.coordinates.push(
+                        feature.properties.elevation,
+                      );
+                    }
+                    return feature;
+                  }
+                : null;
+
+              parallelTasks.push(
+                performanceMonitor.withOperation(
+                  "Processing alpine huts",
+                  async () => {
+                    await StreamToPromise(
+                      asyncGeneratorToStream(dataStore.streamInputAlpineHuts())
+                        .pipe(flatMapArray(formatAlpineHut))
+                        .pipe(mapAsync(alpineHutElevationTransform, 10))
+                        .pipe(
+                          logProgress(
+                            "Alpine huts",
+                            alpineHutsCount,
+                            progressLabel,
+                          ),
+                        )
+                        .pipe(toProcessingTable(dataStore, "alpine_huts")),
+                    );
+                  },
+                ),
+              );
             }
 
             await Promise.all(parallelTasks);
@@ -462,12 +544,20 @@ export default async function prepare(paths: OutputPaths, config: Config) {
       );
     }
 
-    // Copy processing peaks to output (peaks skip clustering, so copy after
-    // resetOutputTables has run inside clustering)
+    // Copy processing peaks, facilities, and alpine huts to output
+    // (these skip clustering, so copy after resetOutputTables has run inside clustering)
     if (config.localOSMDatabase) {
       const peaksCount = await dataStore.getProcessingPeaksCount();
       if (peaksCount > 0) {
         await dataStore.copyPeaksFromProcessingToOutput();
+      }
+      const facilitiesCount = await dataStore.getProcessingFacilitiesCount();
+      if (facilitiesCount > 0) {
+        await dataStore.copyFacilitiesFromProcessingToOutput();
+      }
+      const alpineHutsCount = await dataStore.getProcessingAlpineHutsCount();
+      if (alpineHutsCount > 0) {
+        await dataStore.copyAlpineHutsFromProcessingToOutput();
       }
     }
 

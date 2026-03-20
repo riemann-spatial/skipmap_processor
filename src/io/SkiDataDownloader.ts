@@ -18,6 +18,7 @@ import {
 import { fetchHighwaysFromLocalDB } from "./LocalHighwayProvider";
 import { fetchLiftsFromLocalDB } from "./LocalLiftProvider";
 import { fetchPeaksFromLocalDB } from "./LocalPeakProvider";
+import { fetchPOIsFromLocalDB } from "./LocalPOIProvider";
 import { fetchRunsFromLocalDB } from "./LocalRunProvider";
 import {
   fetchSkiAreasFromLocalDB,
@@ -79,9 +80,10 @@ export default async function downloadAndStoreSkiData(
         }
       }
 
-      // Peak download from local OSM database (peaks are always loaded when local DB is configured)
+      // Peak and POI download from local OSM database (always loaded when local DB is configured)
       if (config.localOSMDatabase) {
         await downloadAndStorePeaksFromLocalDB(config, dataStore);
+        await downloadAndStorePOIsFromLocalDB(config, dataStore);
       }
     });
 
@@ -98,6 +100,10 @@ export default async function downloadAndStoreSkiData(
     if (config.localOSMDatabase) {
       const peaksCount = await dataStore.getInputPeaksCount();
       countLog += `, ${peaksCount} peaks`;
+      const facilitiesCount = await dataStore.getInputFacilitiesCount();
+      countLog += `, ${facilitiesCount} facilities`;
+      const alpineHutsCount = await dataStore.getInputAlpineHutsCount();
+      countLog += `, ${alpineHutsCount} alpine huts`;
     }
     Logger.log(countLog);
 
@@ -245,6 +251,19 @@ async function downloadAndStorePeaksFromLocalDB(
 ): Promise<void> {
   Logger.log("Fetching peaks from local OSM planet database...");
   await fetchPeaksFromLocalDB(
+    config.postgresCache,
+    config.localOSMDatabase!,
+    dataStore,
+    config.localOSMDatabase!.bufferMeters,
+  );
+}
+
+async function downloadAndStorePOIsFromLocalDB(
+  config: Config,
+  dataStore: PostGISDataStore,
+): Promise<void> {
+  Logger.log("Fetching POIs from local OSM planet database...");
+  await fetchPOIsFromLocalDB(
     config.postgresCache,
     config.localOSMDatabase!,
     dataStore,

@@ -129,6 +129,22 @@ export class PostGISDataStore {
           END IF;
         END $$;
       `);
+      // Conditionally truncate facilities table if it exists
+      await client.query(`
+        DO $$ BEGIN
+          IF EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'input' AND table_name = 'facilities') THEN
+            TRUNCATE TABLE input.facilities RESTART IDENTITY CASCADE;
+          END IF;
+        END $$;
+      `);
+      // Conditionally truncate alpine_huts table if it exists
+      await client.query(`
+        DO $$ BEGIN
+          IF EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'input' AND table_name = 'alpine_huts') THEN
+            TRUNCATE TABLE input.alpine_huts RESTART IDENTITY CASCADE;
+          END IF;
+        END $$;
+      `);
       Logger.log("Input tables reset complete.");
     } finally {
       client.release();
@@ -162,6 +178,22 @@ export class PostGISDataStore {
           END IF;
         END $$;
       `);
+      // Conditionally truncate facilities table if it exists
+      await client.query(`
+        DO $$ BEGIN
+          IF EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'output' AND table_name = 'facilities') THEN
+            TRUNCATE TABLE output.facilities RESTART IDENTITY CASCADE;
+          END IF;
+        END $$;
+      `);
+      // Conditionally truncate alpine_huts table if it exists
+      await client.query(`
+        DO $$ BEGIN
+          IF EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'output' AND table_name = 'alpine_huts') THEN
+            TRUNCATE TABLE output.alpine_huts RESTART IDENTITY CASCADE;
+          END IF;
+        END $$;
+      `);
       Logger.log("Output tables reset complete.");
     } finally {
       client.release();
@@ -178,6 +210,8 @@ export class PostGISDataStore {
         "processing.lifts",
         "processing.highways",
         "processing.peaks",
+        "processing.facilities",
+        "processing.alpine_huts",
       ]) {
         await client.query(`
           DO $$ BEGIN
@@ -213,6 +247,20 @@ export class PostGISDataStore {
     await this.batchInsertProcessingFeatures("processing.peaks", features);
   }
 
+  async saveProcessingFacilities(features: ProcessingFeature[]): Promise<void> {
+    await this.batchInsertProcessingFeatures2D(
+      "processing.facilities",
+      features,
+    );
+  }
+
+  async saveProcessingAlpineHuts(features: ProcessingFeature[]): Promise<void> {
+    await this.batchInsertProcessingFeatures2D(
+      "processing.alpine_huts",
+      features,
+    );
+  }
+
   async *streamProcessingSkiAreas(): AsyncGenerator<GeoJSON.Feature> {
     yield* this.streamProcessingFeatures("processing.ski_areas");
   }
@@ -231,6 +279,14 @@ export class PostGISDataStore {
 
   async *streamProcessingPeaks(): AsyncGenerator<GeoJSON.Feature> {
     yield* this.streamProcessingFeatures("processing.peaks");
+  }
+
+  async *streamProcessingFacilities(): AsyncGenerator<GeoJSON.Feature> {
+    yield* this.streamProcessingFeatures("processing.facilities");
+  }
+
+  async *streamProcessingAlpineHuts(): AsyncGenerator<GeoJSON.Feature> {
+    yield* this.streamProcessingFeatures("processing.alpine_huts");
   }
 
   async getProcessingSkiAreasCount(): Promise<number> {
@@ -253,6 +309,14 @@ export class PostGISDataStore {
     return this.getCount("processing.peaks");
   }
 
+  async getProcessingFacilitiesCount(): Promise<number> {
+    return this.getCount("processing.facilities");
+  }
+
+  async getProcessingAlpineHutsCount(): Promise<number> {
+    return this.getCount("processing.alpine_huts");
+  }
+
   async getOutputSkiAreasCount(): Promise<number> {
     return this.getCount("output.ski_areas");
   }
@@ -271,6 +335,14 @@ export class PostGISDataStore {
 
   async getOutputPeaksCount(): Promise<number> {
     return this.getCount("output.peaks");
+  }
+
+  async getOutputFacilitiesCount(): Promise<number> {
+    return this.getCount("output.facilities");
+  }
+
+  async getOutputAlpineHutsCount(): Promise<number> {
+    return this.getCount("output.alpine_huts");
   }
 
   async copyPeaksFromProcessingToOutput(): Promise<void> {
@@ -307,6 +379,80 @@ export class PostGISDataStore {
     }
   }
 
+  async copyFacilitiesFromProcessingToOutput(): Promise<void> {
+    const client = await this.pool.connect();
+    try {
+      await client.query(
+        `TRUNCATE TABLE output.facilities RESTART IDENTITY CASCADE`,
+      );
+      await client.query(`
+        INSERT INTO output.facilities (feature_id, geometry, type, name, facility_type, opening_hours, phone, fee, capacity, access, cuisine, operator, websites, wikidata_id, wikipedia_id, sources, properties)
+        SELECT
+          feature_id,
+          geometry,
+          properties->>'type',
+          properties->>'name',
+          properties->>'facilityType',
+          properties->>'openingHours',
+          properties->>'phone',
+          properties->>'fee',
+          (properties->>'capacity')::REAL,
+          properties->>'access',
+          properties->>'cuisine',
+          properties->>'operator',
+          CASE
+            WHEN properties->'websites' IS NOT NULL AND jsonb_typeof(properties->'websites') = 'array'
+            THEN ARRAY(SELECT jsonb_array_elements_text(properties->'websites'))
+            ELSE NULL
+          END,
+          properties->>'wikidataID',
+          properties->>'wikipediaID',
+          properties->'sources',
+          properties
+        FROM processing.facilities
+      `);
+      Logger.log("Copied facilities from processing to output tables");
+    } finally {
+      client.release();
+    }
+  }
+
+  async copyAlpineHutsFromProcessingToOutput(): Promise<void> {
+    const client = await this.pool.connect();
+    try {
+      await client.query(
+        `TRUNCATE TABLE output.alpine_huts RESTART IDENTITY CASCADE`,
+      );
+      await client.query(`
+        INSERT INTO output.alpine_huts (feature_id, geometry, type, name, elevation, elevation_source, capacity, operator, opening_hours, phone, websites, wikidata_id, wikipedia_id, sources, properties)
+        SELECT
+          feature_id,
+          geometry,
+          properties->>'type',
+          properties->>'name',
+          (properties->>'elevation')::REAL,
+          properties->>'elevationSource',
+          (properties->>'capacity')::REAL,
+          properties->>'operator',
+          properties->>'openingHours',
+          properties->>'phone',
+          CASE
+            WHEN properties->'websites' IS NOT NULL AND jsonb_typeof(properties->'websites') = 'array'
+            THEN ARRAY(SELECT jsonb_array_elements_text(properties->'websites'))
+            ELSE NULL
+          END,
+          properties->>'wikidataID',
+          properties->>'wikipediaID',
+          properties->'sources',
+          properties
+        FROM processing.alpine_huts
+      `);
+      Logger.log("Copied alpine huts from processing to output tables");
+    } finally {
+      client.release();
+    }
+  }
+
   async updateOutputSkiAreaGeometry(
     featureId: string,
     geometry: GeoJSON.Geometry,
@@ -331,6 +477,14 @@ export class PostGISDataStore {
 
   async saveInputPeaks(features: InputFeature[]): Promise<void> {
     await this.batchInsertFeatures("input.peaks", features);
+  }
+
+  async saveInputFacilities(features: InputFeature[]): Promise<void> {
+    await this.batchInsertFeatures("input.facilities", features);
+  }
+
+  async saveInputAlpineHuts(features: InputFeature[]): Promise<void> {
+    await this.batchInsertFeatures("input.alpine_huts", features);
   }
 
   async saveInputSkiAreas(features: InputSkiAreaFeature[]): Promise<void> {
@@ -415,6 +569,14 @@ export class PostGISDataStore {
 
   async saveOutputPeaks(features: OutputFeature[]): Promise<void> {
     await this.batchInsertOutputPeaks(features);
+  }
+
+  async saveOutputFacilities(features: OutputFeature[]): Promise<void> {
+    await this.batchInsertOutputFacilities(features);
+  }
+
+  async saveOutputAlpineHuts(features: OutputFeature[]): Promise<void> {
+    await this.batchInsertOutputAlpineHuts(features);
   }
 
   async createOutput2DViews(): Promise<void> {
@@ -566,6 +728,65 @@ export class PostGISDataStore {
           END IF;
         END $$;
       `);
+      // Create facilities_2d view if facilities table exists
+      await client.query(`
+        DO $$ BEGIN
+          IF EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'output' AND table_name = 'facilities') THEN
+            EXECUTE $view$
+              CREATE OR REPLACE VIEW "output".facilities_2d AS
+              SELECT facilities.id,
+                     facilities.feature_id,
+                     st_force2d(facilities.geometry) AS geometry,
+                     facilities.type,
+                     facilities.name,
+                     facilities.facility_type,
+                     facilities.opening_hours,
+                     facilities.phone,
+                     facilities.fee,
+                     facilities.capacity,
+                     facilities.access,
+                     facilities.cuisine,
+                     facilities.operator,
+                     facilities.websites,
+                     facilities.wikidata_id,
+                     facilities.wikipedia_id,
+                     facilities.sources,
+                     facilities.properties,
+                     facilities.created_at
+              FROM output.facilities
+            $view$;
+          END IF;
+        END $$;
+      `);
+
+      // Create alpine_huts_2d view if alpine_huts table exists
+      await client.query(`
+        DO $$ BEGIN
+          IF EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'output' AND table_name = 'alpine_huts') THEN
+            EXECUTE $view$
+              CREATE OR REPLACE VIEW "output".alpine_huts_2d AS
+              SELECT alpine_huts.id,
+                     alpine_huts.feature_id,
+                     st_force2d(alpine_huts.geometry) AS geometry,
+                     alpine_huts.type,
+                     alpine_huts.name,
+                     alpine_huts.elevation,
+                     alpine_huts.elevation_source,
+                     alpine_huts.capacity,
+                     alpine_huts.operator,
+                     alpine_huts.opening_hours,
+                     alpine_huts.phone,
+                     alpine_huts.websites,
+                     alpine_huts.wikidata_id,
+                     alpine_huts.wikipedia_id,
+                     alpine_huts.sources,
+                     alpine_huts.properties,
+                     alpine_huts.created_at
+              FROM output.alpine_huts
+            $view$;
+          END IF;
+        END $$;
+      `);
     } finally {
       client.release();
     }
@@ -585,6 +806,14 @@ export class PostGISDataStore {
 
   async *streamInputPeaks(): AsyncGenerator<GeoJSON.Feature> {
     yield* this.streamFeatures("input.peaks");
+  }
+
+  async *streamInputFacilities(): AsyncGenerator<GeoJSON.Feature> {
+    yield* this.streamFeatures("input.facilities");
+  }
+
+  async *streamInputAlpineHuts(): AsyncGenerator<GeoJSON.Feature> {
+    yield* this.streamFeatures("input.alpine_huts");
   }
 
   async *streamInputSkiAreas(
@@ -649,6 +878,14 @@ export class PostGISDataStore {
     yield* this.streamOutputFeatures("output.peaks");
   }
 
+  async *streamOutputFacilities(): AsyncGenerator<GeoJSON.Feature> {
+    yield* this.streamOutputFeatures("output.facilities");
+  }
+
+  async *streamOutputAlpineHuts(): AsyncGenerator<GeoJSON.Feature> {
+    yield* this.streamOutputFeatures("output.alpine_huts");
+  }
+
   async getInputRunsCount(): Promise<number> {
     return this.getCount("input.runs");
   }
@@ -667,6 +904,14 @@ export class PostGISDataStore {
 
   async getInputPeaksCount(): Promise<number> {
     return this.getCount("input.peaks");
+  }
+
+  async getInputFacilitiesCount(): Promise<number> {
+    return this.getCount("input.facilities");
+  }
+
+  async getInputAlpineHutsCount(): Promise<number> {
+    return this.getCount("input.alpine_huts");
   }
 
   async close(): Promise<void> {
@@ -689,6 +934,41 @@ export class PostGISDataStore {
           const offset = idx * 3;
           placeholders.push(
             `($${offset + 1}, ST_Force3D(ST_GeomFromGeoJSON($${offset + 2})), $${offset + 3})`,
+          );
+          values.push(
+            feature.feature_id,
+            JSON.stringify(feature.geometry),
+            JSON.stringify(feature.properties),
+          );
+        });
+
+        await client.query(
+          `INSERT INTO ${tableName} (feature_id, geometry, properties)
+           VALUES ${placeholders.join(", ")}`,
+          values,
+        );
+      }
+    } finally {
+      client.release();
+    }
+  }
+
+  private async batchInsertProcessingFeatures2D(
+    tableName: string,
+    features: ProcessingFeature[],
+  ): Promise<void> {
+    const client = await this.pool.connect();
+    try {
+      const batchSize = 1000;
+      for (let i = 0; i < features.length; i += batchSize) {
+        const batch = features.slice(i, i + batchSize);
+        const values: unknown[] = [];
+        const placeholders: string[] = [];
+
+        batch.forEach((feature, idx) => {
+          const offset = idx * 3;
+          placeholders.push(
+            `($${offset + 1}, ST_Force2D(ST_GeomFromGeoJSON($${offset + 2})), $${offset + 3})`,
           );
           values.push(
             feature.feature_id,
@@ -1134,6 +1414,162 @@ export class PostGISDataStore {
              WHERE feature_id = $1`,
             [
               feature.feature_id,
+              toString(p.wikipediaID),
+              p.sources ? JSON.stringify(p.sources) : null,
+              JSON.stringify(p),
+            ],
+          );
+        }
+      }
+    } finally {
+      client.release();
+    }
+  }
+
+  private async batchInsertOutputFacilities(
+    features: OutputFeature[],
+  ): Promise<void> {
+    const client = await this.pool.connect();
+    try {
+      const batchSize = 500;
+      for (let i = 0; i < features.length; i += batchSize) {
+        const batch = deduplicateBatch(features.slice(i, i + batchSize));
+        const values: unknown[] = [];
+        const placeholders: string[] = [];
+
+        batch.forEach((feature, idx) => {
+          const p = feature.properties;
+          const numCols = 13;
+          const offset = idx * numCols;
+          placeholders.push(
+            `($${offset + 1}, ST_Force2D(ST_GeomFromGeoJSON($${offset + 2})), $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8}, $${offset + 9}, $${offset + 10}, $${offset + 11}, $${offset + 12}, $${offset + 13})`,
+          );
+          values.push(
+            feature.feature_id,
+            JSON.stringify(feature.geometry),
+            toString(p.type),
+            toString(p.name),
+            toString(p.facilityType),
+            toString(p.openingHours),
+            toString(p.phone),
+            toString(p.fee),
+            toNumber(p.capacity),
+            toString(p.access),
+            toString(p.cuisine),
+            toString(p.operator),
+            toTextArray(p.websites),
+          );
+        });
+
+        await client.query(
+          `INSERT INTO output.facilities (feature_id, geometry, type, name, facility_type, opening_hours, phone, fee, capacity, access, cuisine, operator, websites)
+           VALUES ${placeholders.join(", ")}
+           ON CONFLICT (feature_id) DO UPDATE SET
+             geometry = EXCLUDED.geometry,
+             type = EXCLUDED.type,
+             name = EXCLUDED.name,
+             facility_type = EXCLUDED.facility_type,
+             opening_hours = EXCLUDED.opening_hours,
+             phone = EXCLUDED.phone,
+             fee = EXCLUDED.fee,
+             capacity = EXCLUDED.capacity,
+             access = EXCLUDED.access,
+             cuisine = EXCLUDED.cuisine,
+             operator = EXCLUDED.operator,
+             websites = EXCLUDED.websites`,
+          values,
+        );
+
+        // Update JSONB columns and full properties
+        for (let j = 0; j < batch.length; j++) {
+          const feature = batch[j];
+          const p = feature.properties;
+          await client.query(
+            `UPDATE output.facilities SET
+               wikidata_id = $2,
+               wikipedia_id = $3,
+               sources = $4,
+               properties = $5
+             WHERE feature_id = $1`,
+            [
+              feature.feature_id,
+              toString(p.wikidataID),
+              toString(p.wikipediaID),
+              p.sources ? JSON.stringify(p.sources) : null,
+              JSON.stringify(p),
+            ],
+          );
+        }
+      }
+    } finally {
+      client.release();
+    }
+  }
+
+  private async batchInsertOutputAlpineHuts(
+    features: OutputFeature[],
+  ): Promise<void> {
+    const client = await this.pool.connect();
+    try {
+      const batchSize = 500;
+      for (let i = 0; i < features.length; i += batchSize) {
+        const batch = deduplicateBatch(features.slice(i, i + batchSize));
+        const values: unknown[] = [];
+        const placeholders: string[] = [];
+
+        batch.forEach((feature, idx) => {
+          const p = feature.properties;
+          const numCols = 11;
+          const offset = idx * numCols;
+          placeholders.push(
+            `($${offset + 1}, ST_Force2D(ST_GeomFromGeoJSON($${offset + 2})), $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8}, $${offset + 9}, $${offset + 10}, $${offset + 11})`,
+          );
+          values.push(
+            feature.feature_id,
+            JSON.stringify(feature.geometry),
+            toString(p.type),
+            toString(p.name),
+            toNumber(p.elevation),
+            toString(p.elevationSource),
+            toNumber(p.capacity),
+            toString(p.operator),
+            toString(p.openingHours),
+            toString(p.phone),
+            toTextArray(p.websites),
+          );
+        });
+
+        await client.query(
+          `INSERT INTO output.alpine_huts (feature_id, geometry, type, name, elevation, elevation_source, capacity, operator, opening_hours, phone, websites)
+           VALUES ${placeholders.join(", ")}
+           ON CONFLICT (feature_id) DO UPDATE SET
+             geometry = EXCLUDED.geometry,
+             type = EXCLUDED.type,
+             name = EXCLUDED.name,
+             elevation = EXCLUDED.elevation,
+             elevation_source = EXCLUDED.elevation_source,
+             capacity = EXCLUDED.capacity,
+             operator = EXCLUDED.operator,
+             opening_hours = EXCLUDED.opening_hours,
+             phone = EXCLUDED.phone,
+             websites = EXCLUDED.websites`,
+          values,
+        );
+
+        // Update JSONB columns and full properties
+        for (let j = 0; j < batch.length; j++) {
+          const feature = batch[j];
+          const p = feature.properties;
+          await client.query(
+            `UPDATE output.alpine_huts SET
+               wikidata_id = $2,
+               wikipedia_id = $3,
+               sources = $4,
+               properties = $5
+             WHERE feature_id = $1`,
+            [
+              feature.feature_id,
+              toString(p.wikidataID),
               toString(p.wikipediaID),
               p.sources ? JSON.stringify(p.sources) : null,
               JSON.stringify(p),

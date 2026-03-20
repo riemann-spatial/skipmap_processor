@@ -8,7 +8,9 @@ type ProcessingTableType =
   | "runs"
   | "lifts"
   | "highways"
-  | "peaks";
+  | "peaks"
+  | "facilities"
+  | "alpine_huts";
 
 function geoJSONFeatureToProcessingFeature(
   feature: GeoJSON.Feature,
@@ -52,6 +54,10 @@ export function toProcessingTable(
         return dataStore.saveProcessingHighways(features);
       case "peaks":
         return dataStore.saveProcessingPeaks(features);
+      case "facilities":
+        return dataStore.saveProcessingFacilities(features);
+      case "alpine_huts":
+        return dataStore.saveProcessingAlpineHuts(features);
     }
   };
 
@@ -110,6 +116,10 @@ export function toOutputTable(
         return dataStore.saveOutputHighways(features);
       case "peaks":
         return dataStore.saveOutputPeaks(features);
+      case "facilities":
+        return dataStore.saveOutputFacilities(features);
+      case "alpine_huts":
+        return dataStore.saveOutputAlpineHuts(features);
     }
   };
 
