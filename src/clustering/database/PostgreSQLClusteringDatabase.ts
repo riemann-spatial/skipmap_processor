@@ -184,6 +184,14 @@ export class PostgreSQLClusteringDatabase implements ClusteringDatabase {
     });
   }
 
+  private deduplicateBatch(objects: MapObject[]): MapObject[] {
+    const seen = new Map<string, MapObject>();
+    for (const obj of objects) {
+      seen.set(obj._key, obj);
+    }
+    return seen.size === objects.length ? objects : Array.from(seen.values());
+  }
+
   private async enablePostGIS(): Promise<void> {
     const pool = this.ensureInitialized();
     await pool.query("CREATE EXTENSION IF NOT EXISTS postgis");
@@ -225,7 +233,7 @@ export class PostgreSQLClusteringDatabase implements ClusteringDatabase {
     const client = await pool.connect();
     try {
       for (let i = 0; i < objects.length; i += BATCH_SIZE) {
-        const batch = objects.slice(i, i + BATCH_SIZE);
+        const batch = this.deduplicateBatch(objects.slice(i, i + BATCH_SIZE));
         const allParams: SQLParamValue[] = [];
         const valuesClauses: string[] = [];
 

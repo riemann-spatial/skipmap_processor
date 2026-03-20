@@ -15,7 +15,7 @@ services:
     stdin_open: true
     tty: true
     environment:
-      - POSTGRES_HOST=192.168.8.199
+      - POSTGRES_HOST=192.168.0.107
       - POSTGRES_PORT=5432
       - POSTGRES_USER=osm
       - POSTGRES_PASSWORD=osm
@@ -31,7 +31,7 @@ services:
       # Local OSM planet database for highway and peak queries (alternative to Overpass)
       # Requires COMPILE_HIGHWAY=1 for highways; peaks are always loaded
       - COMPILE_LOCAL=1
-      - LOCAL_OSM_DB_HOST=192.168.8.199
+      - LOCAL_OSM_DB_HOST=192.168.0.107
       - LOCAL_OSM_DB_PORT=5432
       - LOCAL_OSM_DB_NAME=planet
       - LOCAL_OSM_DB_USER=osm

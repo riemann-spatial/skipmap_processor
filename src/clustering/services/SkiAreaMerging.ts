@@ -19,6 +19,7 @@ export class SkiAreaMerging {
 
     const processedSkimapOrgIds = new Set<string>();
     const skiAreas = await skiAreasCursor.all();
+    let mergeCount = 0;
 
     for (const skiArea of skiAreas) {
       if (processedSkimapOrgIds.has(skiArea.id)) {
@@ -44,8 +45,13 @@ export class SkiAreaMerging {
         allRelatedSkimapOrgIds.forEach((id) => processedSkimapOrgIds.add(id));
 
         await this.mergeIntoSkiAreas(skiArea, skiAreasToMerge);
+        mergeCount++;
       }
     }
+
+    Logger.log(
+      `Merged ${mergeCount} skimap.org ski areas into OpenStreetMap ski areas`,
+    );
   }
 
   private async getSkiAreasToMergeInto(
@@ -109,12 +115,6 @@ export class SkiAreaMerging {
     skimapOrgSkiArea: SkiAreaObject,
     skiAreas: SkiAreaObject[],
   ): Promise<void> {
-    Logger.log(
-      `Merging ${JSON.stringify(skimapOrgSkiArea.properties)} into: ${skiAreas
-        .map((object) => JSON.stringify(object.properties))
-        .join(", ")}`,
-    );
-
     const updates = skiAreas.map((skiArea) => ({
       key: skiArea._key,
       updates: mergeSkiAreaObjects(skiArea, [skimapOrgSkiArea]),
