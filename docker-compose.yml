@@ -19,10 +19,10 @@ services:
       - POSTGRES_PORT=5432
       - POSTGRES_USER=osm
       - POSTGRES_PASSWORD=osm
-      - DBNAME=GlobalSkiData_HW
+      - DBNAME=GlobalSkiData_HW_Test
       # - BBOX=[10.74827, 46.81017, 11.08733, 47.00510] # Ötztal large
       # - BBOX=[37.370679, 56.181660, 37.656116, 56.299853] # Moscow region, Russia
-      # - BBOX=[6.47996, 45.21026, 6.67171, 45.45132] # Savoie, France
+      - BBOX=[6.47996, 45.21026, 6.67171, 45.45132] # Savoie, France
       #- BBOX=[10.31460,47.44436, 10.62329, 47.67072] # Pfronten, Germany
       #- BBOX=[11.85573,47.223133,12.119387,47.42013 ] # Innsbruck, Austria
 
