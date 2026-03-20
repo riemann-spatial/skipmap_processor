@@ -158,14 +158,10 @@ export async function mockProcessingFeatures(
     );
   }
   if (lifts.length > 0) {
-    await dataStore.saveProcessingLifts(
-      lifts.map(featureToProcessingFeature),
-    );
+    await dataStore.saveProcessingLifts(lifts.map(featureToProcessingFeature));
   }
   if (runs.length > 0) {
-    await dataStore.saveProcessingRuns(
-      runs.map(featureToProcessingFeature),
-    );
+    await dataStore.saveProcessingRuns(runs.map(featureToProcessingFeature));
   }
 }
 
@@ -196,14 +192,8 @@ export async function outputContents(
   return { type: "FeatureCollection", features };
 }
 
-export function mapboxGLContents(
-  paths: OutputPaths,
-): FolderContents {
-  return [
-    paths.mapboxGL.lifts,
-    paths.mapboxGL.runs,
-    paths.mapboxGL.skiAreas,
-  ]
+export function mapboxGLContents(paths: OutputPaths): FolderContents {
+  return [paths.mapboxGL.lifts, paths.mapboxGL.runs, paths.mapboxGL.skiAreas]
     .filter((p) => fs.existsSync(p))
     .reduce((contents: FolderContents, filePath: string) => {
       contents.set("output/" + path.basename(filePath), fileContents(filePath));

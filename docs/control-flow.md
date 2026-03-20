@@ -114,12 +114,12 @@ flowchart TD
 
 ## Mode Summary
 
-| Stage | Normal | CONTINUE_WITH_DEM | CONTINUE_PROCESSING_PEAKS | START_AT_HIGHWAYS | EXPORT_ONLY |
-|---|---|---|---|---|---|
-| DB init + download | yes | **skip** | **skip** | **skip** | **skip** |
-| Phase 2: All features | yes | yes | **peaks only** | skip | skip |
-| Elevation cache | **cleared** | **preserved** | **preserved** | n/a | n/a |
-| Phase 3: Clustering | yes | yes | yes | yes | skip |
-| Phase 3: Re-apply elevation | yes | yes | yes | skip | skip |
-| Phase 4: File exports | yes | yes | yes | yes | skip |
-| Phase 4: 3D Tiles | if enabled | if enabled | if enabled | if enabled | if enabled |
+| Stage                       | Normal      | CONTINUE_WITH_DEM | CONTINUE_PROCESSING_PEAKS | START_AT_HIGHWAYS | EXPORT_ONLY |
+| --------------------------- | ----------- | ----------------- | ------------------------- | ----------------- | ----------- |
+| DB init + download          | yes         | **skip**          | **skip**                  | **skip**          | **skip**    |
+| Phase 2: All features       | yes         | yes               | **peaks only**            | skip              | skip        |
+| Elevation cache             | **cleared** | **preserved**     | **preserved**             | n/a               | n/a         |
+| Phase 3: Clustering         | yes         | yes               | yes                       | yes               | skip        |
+| Phase 3: Re-apply elevation | yes         | yes               | yes                       | skip              | skip        |
+| Phase 4: File exports       | yes         | yes               | yes                       | yes               | skip        |
+| Phase 4: 3D Tiles           | if enabled  | if enabled        | if enabled                | if enabled        | if enabled  |

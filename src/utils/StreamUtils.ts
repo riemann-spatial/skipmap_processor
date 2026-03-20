@@ -1,7 +1,9 @@
 import { Readable } from "stream";
 import { Logger } from "./Logger";
 
-export function asyncGeneratorToStream<T>(generator: AsyncGenerator<T>): Readable {
+export function asyncGeneratorToStream<T>(
+  generator: AsyncGenerator<T>,
+): Readable {
   const iterator = generator[Symbol.asyncIterator]();
 
   return new Readable({

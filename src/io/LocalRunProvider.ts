@@ -49,29 +49,31 @@ export async function fetchRunsFromLocalDB(
     }
     Logger.log(`Fetched ${wayBatch.length} run ways from local DB.`);
 
-    // Query run relations
-    const relationRows = await queryRunRelations(localPool, bbox);
-    const relationBatch: InputFeature[] = [];
-    for (const row of relationRows) {
-      const key = `relation/${row.osmId}`;
+    // Query member ways of piste relations (with inherited tags)
+    const memberWayRows = await queryRelationMemberWays(localPool, bbox);
+    const memberWayBatch: InputFeature[] = [];
+    for (const row of memberWayRows) {
+      const key = `way/${row.osmId}`;
       if (seenIds.has(key)) continue;
       seenIds.add(key);
-      relationBatch.push({
+      memberWayBatch.push({
         osm_id: row.osmId,
-        osm_type: "relation",
+        osm_type: "way",
         geometry: row.geometry,
         properties: {
-          type: "relation",
+          type: "way",
           id: row.osmId,
           tags: row.tags,
         },
       });
     }
-    if (relationBatch.length > 0) {
-      await dataStore.saveInputRuns(relationBatch);
-      totalCount += relationBatch.length;
+    if (memberWayBatch.length > 0) {
+      await dataStore.saveInputRuns(memberWayBatch);
+      totalCount += memberWayBatch.length;
     }
-    Logger.log(`Fetched ${relationBatch.length} run relations from local DB.`);
+    Logger.log(
+      `Fetched ${memberWayBatch.length} relation member ways from local DB.`,
+    );
 
     Logger.log(
       `Fetched ${totalCount} runs total from local OSM planet database.`,
@@ -117,29 +119,28 @@ async function queryRunWays(
   }));
 }
 
-async function queryRunRelations(
+async function queryRelationMemberWays(
   localPool: Pool,
   bbox: GeoJSON.BBox | null,
 ): Promise<RunRow[]> {
   const bboxFilter = buildBBoxFilter(bbox, "w.geom", 1);
   const result = await localPool.query(
-    `SELECT r.relation_id AS osm_id,
-            hstore_to_json(r.tags) AS tags,
+    `SELECT w.way_id AS osm_id,
             ST_AsGeoJSON(ST_Transform(
               CASE
-                WHEN r.tags -> 'piste:type' = 'downhill'
-                  THEN COALESCE(ST_BuildArea(ST_Union(w.geom)), ST_LineMerge(ST_Union(w.geom)))
-                ELSE ST_LineMerge(ST_Union(w.geom))
+                WHEN (r.tags || w.tags) -> 'area' = 'yes'
+                  OR (r.tags || w.tags) -> 'piste:type' = 'downhill'
+                  THEN COALESCE(ST_BuildArea(w.geom), w.geom)
+                ELSE w.geom
               END,
               4326
-            ))::json AS geometry
+            ))::json AS geometry,
+            hstore_to_json(r.tags || w.tags) AS tags
      FROM public.relations r
      CROSS JOIN LATERAL jsonb_array_elements(r.members) AS m
-     JOIN public.ways w ON w.way_id = (m->>'ref')::bigint AND m->>'type' = 'way'
-     WHERE r.tags ? 'piste:type'
-       AND ${bboxFilter.clause}
-     GROUP BY r.relation_id, r.tags
-     HAVING ST_Union(w.geom) IS NOT NULL`,
+     JOIN public.ways w ON w.way_id = (m->>'ref')::bigint AND m->>'type' = 'w'
+     WHERE (r.tags ? 'piste:type' OR r.tags -> 'route' = 'piste')
+       AND ${bboxFilter.clause}`,
     bboxFilter.params,
   );
 

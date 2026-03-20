@@ -184,6 +184,14 @@ export class PostgreSQLClusteringDatabase implements ClusteringDatabase {
     });
   }
 
+  private deduplicateBatch(objects: MapObject[]): MapObject[] {
+    const seen = new Map<string, MapObject>();
+    for (const obj of objects) {
+      seen.set(obj._key, obj);
+    }
+    return seen.size === objects.length ? objects : Array.from(seen.values());
+  }
+
   private async enablePostGIS(): Promise<void> {
     const pool = this.ensureInitialized();
     await pool.query("CREATE EXTENSION IF NOT EXISTS postgis");
@@ -216,18 +224,57 @@ export class PostgreSQLClusteringDatabase implements ClusteringDatabase {
   }
 
   async saveObjects(objects: MapObject[]): Promise<void> {
-    this.ensureInitialized();
+    if (objects.length === 0) return;
 
-    await this.processBatches(
-      objects,
-      BATCH_SIZES.BULK_OPERATION,
-      async (batch, client) => {
-        for (const object of batch) {
-          const params = mapObjectToSQLParams(object);
-          await client.query(SQL.INSERT_OBJECT, params);
+    const pool = this.ensureInitialized();
+    const PARAMS_PER_ROW = 16;
+    const BATCH_SIZE = 500;
+
+    const client = await pool.connect();
+    try {
+      for (let i = 0; i < objects.length; i += BATCH_SIZE) {
+        const batch = this.deduplicateBatch(objects.slice(i, i + BATCH_SIZE));
+        const allParams: SQLParamValue[] = [];
+        const valuesClauses: string[] = [];
+
+        for (let idx = 0; idx < batch.length; idx++) {
+          const params = mapObjectToSQLParams(batch[idx]);
+          allParams.push(...params);
+          const offset = idx * PARAMS_PER_ROW;
+          const p = (n: number) => `$${offset + n}`;
+          valuesClauses.push(
+            `(${p(1)}, ${p(2)}, ${p(3)}, ${p(4)}, ${p(5)}, ST_MakeValid(ST_Force2D(ST_GeomFromGeoJSON(${p(6)})), 'method=structure'), ${p(7)}, ${p(8)}, ${p(9)}, ${p(10)}, ${p(11)}, ${p(12)}, ${p(13)}, ${p(14)}, ${p(15)}, ${p(16)})`,
+          );
         }
-      },
-    );
+
+        const query = `
+          INSERT INTO objects
+          (key, type, source, geometry, geometry_with_elevations, geom, is_polygon, activities, ski_areas,
+           is_basis_for_new_ski_area, is_in_ski_area_polygon, is_in_ski_area_site,
+           lift_type, difficulty, viirs_pixels, properties)
+          VALUES ${valuesClauses.join(", ")}
+          ON CONFLICT (key) DO UPDATE SET
+            type = EXCLUDED.type,
+            source = EXCLUDED.source,
+            geometry = EXCLUDED.geometry,
+            geometry_with_elevations = EXCLUDED.geometry_with_elevations,
+            geom = EXCLUDED.geom,
+            is_polygon = EXCLUDED.is_polygon,
+            activities = EXCLUDED.activities,
+            ski_areas = EXCLUDED.ski_areas,
+            is_basis_for_new_ski_area = EXCLUDED.is_basis_for_new_ski_area,
+            is_in_ski_area_polygon = EXCLUDED.is_in_ski_area_polygon,
+            is_in_ski_area_site = EXCLUDED.is_in_ski_area_site,
+            lift_type = EXCLUDED.lift_type,
+            difficulty = EXCLUDED.difficulty,
+            viirs_pixels = EXCLUDED.viirs_pixels,
+            properties = EXCLUDED.properties
+        `;
+        await client.query(query, allParams);
+      }
+    } finally {
+      client.release();
+    }
   }
 
   async updateObject(key: string, updates: Partial<MapObject>): Promise<void> {

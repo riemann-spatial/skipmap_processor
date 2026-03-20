@@ -110,14 +110,13 @@ export async function fetchSkiAreaSitesFromLocalDB(
     Logger.log("Querying ski area sites from local OSM planet database...");
 
     const bboxFilter = buildBBoxFilter(bbox, "w.geom", 1);
-    const bboxClause =
-      bbox
-        ? `AND EXISTS (
+    const bboxClause = bbox
+      ? `AND EXISTS (
             SELECT 1 FROM jsonb_array_elements(r.members) AS m2
             JOIN public.ways w ON w.way_id = (m2->>'ref')::bigint AND m2->>'type' = 'way'
             WHERE ${bboxFilter.clause}
           )`
-        : "";
+      : "";
     const result = await localPool.query(
       `SELECT r.relation_id AS osm_id,
               hstore_to_json(r.tags) AS tags,
@@ -214,7 +213,7 @@ async function querySkiAreaRelations(
             ))::json AS geometry
      FROM public.relations r
      CROSS JOIN LATERAL jsonb_array_elements(r.members) AS m
-     JOIN public.ways w ON w.way_id = (m->>'ref')::bigint AND m->>'type' = 'way'
+     JOIN public.ways w ON w.way_id = (m->>'ref')::bigint AND m->>'type' = 'w'
      WHERE ${SKI_AREA_RELATION_LANDUSE_FILTER}
        AND ${bboxFilter.clause}
      GROUP BY r.relation_id, r.tags

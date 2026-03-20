@@ -12,6 +12,9 @@ This is a data pipeline that consumes OpenStreetMap & Skimap.org data and produc
 # Build the processor
 docker build -t openskidata-processor .
 
+# read the logs:
+docker compose logs --tail 1000 app
+
 docker rm -f openskidata-processor 2>/dev/null || true
 
 # Run the processor (container stays running for external commands)

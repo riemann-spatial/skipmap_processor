@@ -285,7 +285,11 @@ async function downloadAndStoreSkiAreaSitesFromLocalDB(
   dataStore: PostGISDataStore,
 ): Promise<void> {
   Logger.log("Fetching ski area sites from local OSM planet database...");
-  await fetchSkiAreaSitesFromLocalDB(config.localOSMDatabase!, dataStore, config.bbox);
+  await fetchSkiAreaSitesFromLocalDB(
+    config.localOSMDatabase!,
+    dataStore,
+    config.bbox,
+  );
 }
 
 function osmFeatureToInputFeature(feature: GeoJSON.Feature): InputFeature {

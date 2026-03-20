@@ -124,17 +124,17 @@ it("correctly associates lifts and runs with ski areas", async () => {
 
   await clusterSkiAreas(dataStore, testConfig);
 
-  const lifts = (await TestHelpers.outputContents(dataStore, "lifts")).features.map(
-    simplifiedLiftFeature,
-  );
+  const lifts = (
+    await TestHelpers.outputContents(dataStore, "lifts")
+  ).features.map(simplifiedLiftFeature);
 
-  const runs = (await TestHelpers.outputContents(dataStore, "runs")).features.map(
-    simplifiedRunFeature,
-  );
+  const runs = (
+    await TestHelpers.outputContents(dataStore, "runs")
+  ).features.map(simplifiedRunFeature);
 
-  const skiAreas = (await TestHelpers.outputContents(dataStore, "ski_areas")).features.map(
-    simplifiedSkiAreaFeature,
-  );
+  const skiAreas = (
+    await TestHelpers.outputContents(dataStore, "ski_areas")
+  ).features.map(simplifiedSkiAreaFeature);
 
   // Verify that ski area associations are correctly populated
   expect(lifts).toEqual([
@@ -213,8 +213,10 @@ it("verifies ski area associations persist through clustering and augmentation",
 
   await clusterSkiAreas(dataStore, testConfig);
 
-  const outputRuns = (await TestHelpers.outputContents(dataStore, "runs")).features;
-  const outputLifts = (await TestHelpers.outputContents(dataStore, "lifts")).features;
+  const outputRuns = (await TestHelpers.outputContents(dataStore, "runs"))
+    .features;
+  const outputLifts = (await TestHelpers.outputContents(dataStore, "lifts"))
+    .features;
 
   // Verify that ski area associations are correctly populated
   expect(outputRuns[0]?.properties?.skiAreas).not.toEqual([]);

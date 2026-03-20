@@ -196,8 +196,11 @@ it("shortens ski area names for Mapbox GL output", async () => {
     await prepare(paths, config);
 
     expect(
-      (TestHelpers.fileContents(paths.mapboxGL.skiAreas) as { features: { properties: { name: string } }[] }).features[0]
-        .properties.name,
+      (
+        TestHelpers.fileContents(paths.mapboxGL.skiAreas) as {
+          features: { properties: { name: string } }[];
+        }
+      ).features[0].properties.name,
     ).toBe("Ski Welt");
 
     const skiAreas = await TestHelpers.outputContents(dataStore, "ski_areas");
@@ -317,9 +320,8 @@ it("processes OpenStreetMap ski area sites", async () => {
     await prepare(paths, config);
 
     const skiAreas = await TestHelpers.outputContents(dataStore, "ski_areas");
-    expect(
-  skiAreas.features.map(simplifiedSkiAreaFeature)
-).toMatchInlineSnapshot(`
+    expect(skiAreas.features.map(simplifiedSkiAreaFeature))
+      .toMatchInlineSnapshot(`
 [
   {
     "activities": [
@@ -332,9 +334,7 @@ it("processes OpenStreetMap ski area sites", async () => {
 `);
 
     const lifts = await TestHelpers.outputContents(dataStore, "lifts");
-    expect(
-  lifts.features.map(simplifiedLiftFeature)
-).toMatchInlineSnapshot(`
+    expect(lifts.features.map(simplifiedLiftFeature)).toMatchInlineSnapshot(`
 [
   {
     "id": "fa8b7321d15e0f111786a467e69c7b8e1d4f9431",
@@ -347,9 +347,7 @@ it("processes OpenStreetMap ski area sites", async () => {
 `);
 
     const runs = await TestHelpers.outputContents(dataStore, "runs");
-    expect(
-  runs.features.map(simplifiedRunFeature)
-).toMatchInlineSnapshot(`
+    expect(runs.features.map(simplifiedRunFeature)).toMatchInlineSnapshot(`
 [
   {
     "id": "ab2c973773eabc9757213f2e917575286f7e6c7e",
